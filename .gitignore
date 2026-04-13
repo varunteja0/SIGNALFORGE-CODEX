@@ -1,0 +1,48 @@
+# Environment
+.env
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Data & cache (large, regeneratable)
+data/cache/
+data/*.csv
+data/*.parquet
+
+# Fund runtime data (DB, logs, ledger)
+fund_data/*.db
+fund_data/*.log
+fund_data/ledger.json
+
+# Logs
+*.log
+
+# Test output files
+test_output.txt
+test_results.txt
+test_results2.txt
+test_results_final.txt
+e2e_out.txt
+e2e_results.txt
+
+# Pipeline output (regeneratable)
+pipeline_output/
+pipeline_results.json
+
+# Notebooks checkpoints
+notebooks/.ipynb_checkpoints/
+
+# Evolved strategies (regeneratable with each run)
+evolved_strategies/latest_evolution.json
+
+# Test runtime data
+test_fund/ledger.json
+test_evolved/latest_evolution.json
+
+# OS
+.DS_Store
+Thumbs.db

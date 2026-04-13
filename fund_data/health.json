@@ -1,0 +1,58 @@
+{
+  "timestamp": 1776085663.044579,
+  "overall_status": "ok",
+  "uptime_seconds": 0.09589529037475586,
+  "trading_iterations": 1,
+  "should_halt": false,
+  "halt_reason": "",
+  "checks": [
+    {
+      "name": "heartbeat",
+      "status": "ok",
+      "message": "Last heartbeat 0s ago",
+      "value": 1.8596649169921875e-05
+    },
+    {
+      "name": "execution_quality",
+      "status": "ok",
+      "message": "No recent executions",
+      "value": 0.0
+    },
+    {
+      "name": "error_rate",
+      "status": "ok",
+      "message": "0 consecutive errors",
+      "value": 0
+    },
+    {
+      "name": "strategy_alpha_de7bfc95",
+      "status": "ok",
+      "message": "Strategy alpha_de7bfc95 healthy",
+      "value": 0.0
+    },
+    {
+      "name": "strategy_alpha_392cbed5",
+      "status": "ok",
+      "message": "Strategy alpha_392cbed5 healthy",
+      "value": 0.0
+    },
+    {
+      "name": "risk_limits",
+      "status": "ok",
+      "message": "DD=0.0% DailyLoss=0.0%",
+      "value": 0.0
+    },
+    {
+      "name": "ledger_integrity",
+      "status": "ok",
+      "message": "Ledger hash chain valid",
+      "value": 0.0
+    },
+    {
+      "name": "system_resources",
+      "status": "ok",
+      "message": "Process memory: 0MB",
+      "value": 0.1484375
+    }
+  ]
+}

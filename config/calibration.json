@@ -1,0 +1,10 @@
+{
+  "price_impact_bps_per_million": 4.5,
+  "calibrated_at": "2026-04-13 14:45:44",
+  "calibration_events": [
+    "COVID Crash Mar 2020",
+    "May 2021 Crash",
+    "FTX Collapse Nov 2022",
+    "Aug 2023 Flash Crash"
+  ]
+}

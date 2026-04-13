@@ -1,0 +1,164 @@
+# SignalForge Configuration
+# ========================
+# NEVER commit API keys. Use .env file instead.
+
+exchange:
+  name: binance
+  testnet: true  # START WITH TESTNET. Switch to false only when ready.
+  rate_limit: true
+
+trading:
+  symbols:
+    - BTC/USDT
+    - ETH/USDT
+    - SOL/USDT
+    - BNB/USDT
+    - XRP/USDT
+  timeframes:
+    - 1m
+    - 5m
+    - 15m
+    - 1h
+    - 4h
+    - 1d
+  lookback_bars: 1000
+
+signals:
+  min_sharpe: 1.5            # Minimum Sharpe ratio to consider a signal valid
+  min_trades: 30             # Minimum trades in backtest to trust results
+  max_correlation: 0.7       # Max correlation between signals (diversification)
+  walk_forward_splits: 5     # Walk-forward validation splits
+
+risk:
+  max_position_pct: 0.02     # Max 2% of capital per trade
+  max_drawdown_pct: 0.10     # Stop trading at 10% drawdown
+  max_daily_loss_pct: 0.03   # Max 3% daily loss
+  max_open_positions: 5      # Max concurrent positions
+  max_correlated_positions: 3
+
+regime:
+  lookback_days: 90
+  n_regimes: 3               # Bull, Bear, Sideways
+
+backtest:
+  initial_capital: 10000
+  commission_pct: 0.001      # 0.1% Binance fee
+  slippage_pct: 0.0005       # 0.05% estimated slippage
+
+# ============================================================
+# Alpha Genome — Self-Evolving Strategy Engine
+# ============================================================
+alpha_genome:
+  population_size: 200       # Number of strategy trees per generation
+  max_generations: 50        # Evolution generations (more = better but slower)
+  tournament_size: 5         # Tournament selection pressure
+  crossover_rate: 0.7        # Probability of crossover vs reproduction
+  mutation_rate: 0.2         # Probability of mutation per individual
+  elitism_count: 10          # Top N preserved unchanged each generation
+  max_tree_depth: 6          # Max expression tree depth (prevents bloat)
+  novelty_weight: 0.2        # 0-1, how much to reward novelty vs fitness
+  min_trades: 15             # Minimum OOS trades to consider valid
+  output_dir: evolved_strategies
+
+# ============================================================
+# Liquidation Oracle — Cascade Prediction Engine
+# ============================================================
+liquidation:
+  use_synthetic: true        # Use synthetic positions for testing
+  synthetic_tvl: 5000000000  # $5B simulated TVL
+  price_impact_bps: 5.0      # Basis points per $1M of selling
+  scan_drop_range: [1.0, 30.0]  # % drop range to scan
+  # aave_v3_url: ""          # The Graph subgraph URL (when ready)
+  # compound_v3_url: ""      # Compound API URL (when ready)
+
+# ============================================================
+# Autonomous Fund Manager
+# ============================================================
+fund:
+  max_strategies: 10         # Max concurrent strategies
+  rebalance_hours: 24        # Rebalance allocation interval
+  ledger_path: fund_data/ledger.json
+
+# ============================================================
+# On-Chain Data Intelligence
+# ============================================================
+onchain:
+  use_live: true             # Try live APIs (falls back to synthetic)
+  cache_ttl_seconds: 300     # Cache API responses for 5 minutes
+  history_days: 90           # Days of historical on-chain data
+
+# ============================================================
+# Strategy Decay Detection
+# ============================================================
+decay:
+  min_trades: 20             # Min trades before decay assessment
+  rolling_window: 30         # Rolling window (trades) for Sharpe
+  kill_threshold: 70         # Decay score (0-100) to kill strategy
+  max_drawdown_days: 30      # Kill if in drawdown this long
+
+# ============================================================
+# Adaptive Position Sizing (Kelly)
+# ============================================================
+sizing:
+  max_fraction: 0.04         # Max 4% of capital per trade
+  min_fraction: 0.002        # Min 0.2% to be worth trading
+  drawdown_scale_start: 0.05 # Start reducing at 5% drawdown
+  drawdown_scale_zero: 0.15  # Zero sizing at 15% drawdown
+
+# ============================================================
+# Health Monitor
+# ============================================================
+health:
+  max_data_age_seconds: 300
+  max_slippage_pct: 0.005
+  max_consecutive_errors: 5
+  heartbeat_timeout: 180
+
+# ============================================================
+# V2.0 — Ensemble Evolution (Island Model GP)
+# ============================================================
+ensemble:
+  n_islands: 4               # Parallel sub-populations
+  island_size: 50            # Population per island
+  committee_size: 20          # Final committee members
+  migration_interval: 5       # Migrate best every 5 gens
+  migration_count: 3          # Migrate top 3 between islands
+  min_diversity: 0.3          # Min correlation distance in committee
+
+# ============================================================
+# V2.0 — Portfolio Optimization
+# ============================================================
+portfolio:
+  method: hrp                 # markowitz, risk_parity, cvar, hrp
+  max_weight: 0.30            # Max weight per strategy
+  min_weight: 0.02            # Min weight per strategy
+  risk_free_rate: 0.04        # Annual risk-free rate
+  shrinkage_factor: 0.5       # Ledoit-Wolf covariance shrinkage
+
+# ============================================================
+# V2.0 — Advanced Risk Management
+# ============================================================
+advanced_risk:
+  yellow_band: 0.05           # Warning — reduce sizing 25%
+  orange_band: 0.10           # Danger — reduce sizing 50%
+  red_band: 0.15              # Critical — halt all trades
+  black_band: 0.20            # Emergency — close everything
+  max_portfolio_heat: 0.10    # Max 10% total risk exposure
+  liquidity_buffer: 0.05      # Keep 5% cash always
+  max_correlation_spike: 0.85 # Flag correlated strategies
+
+# ============================================================
+# V2.0 — Smart Execution
+# ============================================================
+execution:
+  max_slippage_bps: 50        # Reject if slippage > 50 bps
+  max_price_gap_pct: 2.0      # Reject stale signals (>2% gap)
+  twap_threshold_usd: 50000   # Use TWAP for orders > $50K
+  twap_n_slices: 5            # Split TWAP into 5 sub-orders
+
+# ============================================================
+# V2.0 — API Server
+# ============================================================
+api:
+  host: 0.0.0.0
+  port: 8000
