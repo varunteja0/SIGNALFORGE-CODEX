@@ -364,3 +364,264 @@ class Backtester:
             take_profit_atr=take_profit_atr,
             max_holding_bars=holding_period * 2,  # Allow 2x holding for SL/TP
         )
+
+    def run_dynamic(
+        self,
+        df: pd.DataFrame,
+        signal_func: Callable,
+        position_size_pct: float = 0.02,
+        # Initial stop
+        initial_stop_atr: float = 1.5,
+        # Trailing stop
+        trail_activation_atr: float = 1.0,
+        trail_distance_atr: float = 1.0,
+        # Partial take profit
+        tp1_atr: float = 2.5,
+        tp1_close_pct: float = 0.5,
+        tp2_atr: float = 5.0,
+        # Time management
+        max_holding_bars: int = 24,
+        time_decay_bars: int = 10,
+        time_decay_stop_atr: float = 0.8,
+    ) -> BacktestResult:
+        """Backtest with dynamic exits: trailing stop, partial TP, time decay.
+
+        Exit logic (checked in order each bar):
+        1. Initial stop: fixed at initial_stop_atr × ATR from entry
+        2. Trailing stop: once MFE >= trail_activation_atr × ATR,
+           stop ratchets to trail_distance_atr × ATR below high water mark
+        3. TP1 partial: at tp1_atr × ATR, close tp1_close_pct of position
+        4. TP2 hard: at tp2_atr × ATR, close remainder
+        5. Time decay: after time_decay_bars, tighten stop to time_decay_stop_atr × ATR
+        6. Max hold: force close at max_holding_bars
+        7. Opposite signal: close and reverse
+        """
+        signals = signal_func(df)
+        capital = self.initial_capital
+        trades = []
+        equity = [capital]
+        equity_times = [df.index[0]]
+
+        atr_col = "atr_14" if "atr_14" in df.columns else None
+
+        # Position state
+        position = None
+        hwm_price = None          # High water mark (best price in our favor)
+        trail_active = False      # Whether trailing stop is active
+        tp1_hit = False           # Whether TP1 partial close happened
+        remaining_pct = 1.0       # Fraction of position still open
+        partial_pnl = 0.0         # PnL already locked in from partials
+        entry_atr = 0.0           # ATR at entry time (frozen, not inflated by crashes)
+
+        def _get_stop(entry_price, direction, atr, bars_held):
+            """Compute current stop level based on state.
+            
+            Uses entry_atr (frozen at entry) for stop distances so crash-inflated
+            ATR doesn't widen the stop when we need it most.
+            """
+            # Time-decay tightened stop
+            if bars_held >= time_decay_bars:
+                stop_mult = time_decay_stop_atr
+            else:
+                stop_mult = initial_stop_atr
+
+            # Trailing stop overrides if active
+            if trail_active and hwm_price is not None:
+                if direction == 1:
+                    fixed_stop = entry_price - stop_mult * entry_atr
+                    trail_stop = hwm_price - trail_distance_atr * entry_atr
+                    return max(fixed_stop, trail_stop)  # Use tighter stop
+                else:
+                    fixed_stop = entry_price + stop_mult * entry_atr
+                    trail_stop = hwm_price + trail_distance_atr * entry_atr
+                    return min(fixed_stop, trail_stop)  # Use tighter stop
+
+            # Fixed stop
+            if direction == 1:
+                return entry_price - stop_mult * entry_atr
+            else:
+                return entry_price + stop_mult * entry_atr
+
+        for i in range(1, len(df)):
+            bar = df.iloc[i]
+            signal = signals.iloc[i]
+
+            if position is not None:
+                close_reason = None
+                exit_price = bar["close"]
+                bars_held = i - df.index.get_loc(position.entry_time)
+
+                # Update high water mark
+                if position.direction == 1:
+                    if hwm_price is None or bar["high"] > hwm_price:
+                        hwm_price = bar["high"]
+                    mfe_atr = (hwm_price - position.entry_price) / entry_atr if entry_atr > 0 else 0
+                else:
+                    if hwm_price is None or bar["low"] < hwm_price:
+                        hwm_price = bar["low"]
+                    mfe_atr = (position.entry_price - hwm_price) / entry_atr if entry_atr > 0 else 0
+
+                # Activate trailing stop
+                if not trail_active and mfe_atr >= trail_activation_atr:
+                    trail_active = True
+
+                # --- Check exits ---
+                stop = _get_stop(position.entry_price, position.direction, entry_atr, bars_held)
+
+                # 1. Stop loss (initial or trailing)
+                if position.direction == 1:
+                    if bar["low"] <= stop:
+                        exit_price = stop
+                        close_reason = "stop_loss"
+                else:
+                    if bar["high"] >= stop:
+                        exit_price = stop
+                        close_reason = "stop_loss"
+
+                # 2. TP1 partial close
+                if close_reason is None and not tp1_hit and entry_atr > 0:
+                    if position.direction == 1:
+                        tp1_level = position.entry_price + tp1_atr * entry_atr
+                        if bar["high"] >= tp1_level:
+                            # Partial close at TP1
+                            tp1_price = tp1_level
+                            slip = tp1_price * self.slippage_pct
+                            tp1_price -= slip if position.direction == 1 else -slip
+                            close_size = position.size * remaining_pct * tp1_close_pct
+                            comm = tp1_price * close_size * self.commission_pct
+                            pnl_partial = (tp1_price - position.entry_price) * close_size - comm
+                            partial_pnl += pnl_partial
+                            capital += pnl_partial
+                            remaining_pct *= (1.0 - tp1_close_pct)
+                            tp1_hit = True
+                    else:
+                        tp1_level = position.entry_price - tp1_atr * entry_atr
+                        if bar["low"] <= tp1_level:
+                            tp1_price = tp1_level
+                            slip = tp1_price * self.slippage_pct
+                            tp1_price += slip
+                            close_size = position.size * remaining_pct * tp1_close_pct
+                            comm = tp1_price * close_size * self.commission_pct
+                            pnl_partial = (position.entry_price - tp1_price) * close_size - comm
+                            partial_pnl += pnl_partial
+                            capital += pnl_partial
+                            remaining_pct *= (1.0 - tp1_close_pct)
+                            tp1_hit = True
+
+                # 3. TP2 hard close for remainder
+                if close_reason is None and entry_atr > 0:
+                    if position.direction == 1:
+                        tp2_level = position.entry_price + tp2_atr * entry_atr
+                        if bar["high"] >= tp2_level:
+                            exit_price = tp2_level
+                            close_reason = "take_profit_2"
+                    else:
+                        tp2_level = position.entry_price - tp2_atr * entry_atr
+                        if bar["low"] <= tp2_level:
+                            exit_price = tp2_level
+                            close_reason = "take_profit_2"
+
+                # 4. Max holding period
+                if bars_held >= max_holding_bars and close_reason is None:
+                    close_reason = "max_hold"
+
+                # 5. Opposite signal
+                if signal != 0 and signal != position.direction and close_reason is None:
+                    close_reason = "reverse_signal"
+
+                # Execute full close of remaining position
+                if close_reason:
+                    slip = exit_price * self.slippage_pct
+                    if position.direction == 1:
+                        exit_price -= slip
+                    else:
+                        exit_price += slip
+
+                    remaining_size = position.size * remaining_pct
+                    commission = exit_price * remaining_size * self.commission_pct
+
+                    if position.direction == 1:
+                        pnl_final = (exit_price - position.entry_price) * remaining_size - commission
+                    else:
+                        pnl_final = (position.entry_price - exit_price) * remaining_size - commission
+
+                    total_pnl = partial_pnl + pnl_final
+                    total_size = position.size  # Original full size
+
+                    position.exit_price = exit_price
+                    position.exit_time = df.index[i]
+                    position.pnl = total_pnl
+                    position.pnl_pct = total_pnl / (position.entry_price * total_size)
+                    position.commission += commission
+                    position.is_open = False
+
+                    capital += pnl_final
+                    trades.append(position)
+
+                    # Reset state
+                    position = None
+                    hwm_price = None
+                    trail_active = False
+                    tp1_hit = False
+                    remaining_pct = 1.0
+                    partial_pnl = 0.0
+
+            # Open new position
+            if signal != 0 and position is None and capital > 0:
+                entry_price = bar["close"]
+                slip = entry_price * self.slippage_pct
+                if signal == 1:
+                    entry_price += slip
+                else:
+                    entry_price -= slip
+
+                risk_capital = capital * position_size_pct
+                size = risk_capital / entry_price
+                commission = entry_price * size * self.commission_pct
+
+                position = Trade(
+                    entry_time=df.index[i],
+                    exit_time=None,
+                    symbol="",
+                    direction=signal,
+                    entry_price=entry_price,
+                    size=size,
+                    commission=commission,
+                )
+                capital -= commission
+
+                # Initialize exit state
+                hwm_price = entry_price
+                trail_active = False
+                tp1_hit = False
+                remaining_pct = 1.0
+                partial_pnl = 0.0
+                entry_atr = df[atr_col].iloc[i] if atr_col else 0
+
+            # Track equity
+            mark_pnl = 0
+            if position is not None:
+                remaining_size = position.size * remaining_pct
+                mark_pnl = (bar["close"] - position.entry_price) * remaining_size * position.direction
+            equity.append(capital + mark_pnl)
+            equity_times.append(df.index[i])
+
+        # Close any remaining position
+        if position is not None:
+            exit_price = df.iloc[-1]["close"]
+            remaining_size = position.size * remaining_pct
+            commission = exit_price * remaining_size * self.commission_pct
+            if position.direction == 1:
+                pnl_final = (exit_price - position.entry_price) * remaining_size - commission
+            else:
+                pnl_final = (position.entry_price - exit_price) * remaining_size - commission
+            total_pnl = partial_pnl + pnl_final
+            position.exit_price = exit_price
+            position.exit_time = df.index[-1]
+            position.pnl = total_pnl
+            position.pnl_pct = total_pnl / (position.entry_price * position.size)
+            position.is_open = False
+            capital += pnl_final
+            trades.append(position)
+
+        return self._compute_stats(trades, equity, equity_times)

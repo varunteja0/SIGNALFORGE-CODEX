@@ -438,3 +438,314 @@ class SmartExecutionEngine:
             is_paper=True,
             algo=algo,
         )
+
+    # ================================================================
+    # VWAP Execution
+    # ================================================================
+
+    def _vwap_execute(
+        self,
+        symbol: str,
+        direction: int,
+        size: float,
+        reference_price: float,
+        book_depth: float,
+        est_slippage_bps: float,
+        volume_profile: list[float] = None,
+    ) -> SmartOrderResult:
+        """VWAP execution: split orders proportional to volume profile.
+
+        Unlike TWAP (equal splits), VWAP places MORE during high-volume
+        periods and LESS during low-volume. This reduces market impact.
+
+        volume_profile: list of relative volumes per slice (e.g., [0.3, 0.15, 0.1, 0.2, 0.25])
+                        If None, uses a typical crypto hourly profile.
+        """
+        if volume_profile is None:
+            # Typical crypto intraday volume profile (normalized to sum=1)
+            # Higher volume at open/close of major sessions
+            volume_profile = [0.25, 0.15, 0.10, 0.10, 0.15, 0.25]
+
+        n_slices = len(volume_profile)
+        total_vol = sum(volume_profile)
+        fractions = [v / total_vol for v in volume_profile]
+
+        total_filled = 0
+        weighted_price = 0
+
+        for i, frac in enumerate(fractions):
+            slice_size = size * frac
+            slice_notional = slice_size * reference_price
+
+            # Each slice has lower impact because it matches volume
+            # VWAP reduces impact by ~30% vs market orders
+            slice_slippage = self._estimate_slippage_bps(
+                slice_notional, book_depth
+            ) * 0.7  # VWAP benefit
+
+            if self.paper_mode:
+                # Simulate: price drifts between slices
+                noise = np.random.normal(0, reference_price * 0.0001)
+                slice_price = reference_price + noise
+
+                if direction == 1:
+                    slice_price *= (1 + slice_slippage / 10000)
+                else:
+                    slice_price *= (1 - slice_slippage / 10000)
+
+                weighted_price += slice_price * slice_size
+                total_filled += slice_size
+            else:
+                # Live: place limit order near mid-price, weighted by volume
+                try:
+                    side = "buy" if direction == 1 else "sell"
+                    # Slight limit bias to capture spread
+                    limit_offset = 0.0002 if direction == 1 else -0.0002
+                    limit_price = reference_price * (1 + limit_offset)
+
+                    order = self.exchange.create_order(
+                        symbol=symbol,
+                        type="limit",
+                        side=side,
+                        amount=slice_size,
+                        price=limit_price,
+                    )
+                    fill_price = order.get("average", order.get("price", limit_price))
+                    filled = order.get("filled", slice_size)
+                    weighted_price += fill_price * filled
+                    total_filled += filled
+                except Exception as e:
+                    logger.warning(f"VWAP slice {i} failed: {e}")
+
+        if total_filled > 0:
+            avg_price = weighted_price / total_filled
+            actual_slippage = abs(avg_price / reference_price - 1) * 10000
+        else:
+            avg_price = reference_price
+            actual_slippage = 0
+
+        side = "buy" if direction == 1 else "sell"
+        return SmartOrderResult(
+            success=total_filled > 0,
+            order_id=f"vwap_{symbol}_{int(time.time())}",
+            symbol=symbol,
+            side=side,
+            price=avg_price,
+            size=total_filled,
+            requested_size=size,
+            unfilled=size - total_filled,
+            cost=avg_price * total_filled,
+            slippage_bps=actual_slippage,
+            is_paper=self.paper_mode,
+            algo="vwap",
+            n_child_orders=n_slices,
+        )
+
+    def execute_entry_vwap(
+        self,
+        symbol: str,
+        direction: int,
+        size: float,
+        entry_price: float,
+        stop_loss: float,
+        take_profit: float,
+        signal_price: float,
+        atr: float = 0,
+        book_depth_usd: float = None,
+        volume_profile: list[float] = None,
+    ) -> SmartOrderResult:
+        """Execute entry using VWAP algorithm.
+
+        Preferred for:
+            - Orders > $10K notional
+            - Funding spike trades (worst liquidity moments)
+            - Any trade where slippage is a concern
+        """
+        # Pre-trade checks (same as execute_entry)
+        side = "buy" if direction == 1 else "sell"
+
+        if signal_price > 0 and entry_price > 0:
+            gap_pct = abs(entry_price / signal_price - 1) * 100
+            if gap_pct > self.max_price_gap_pct:
+                return SmartOrderResult(
+                    success=False, symbol=symbol, side=side,
+                    error=f"Price gap {gap_pct:.1f}% > max {self.max_price_gap_pct}%",
+                    is_paper=self.paper_mode,
+                )
+
+        order_notional = size * entry_price
+        book_depth = book_depth_usd or self.default_book_depth
+        est_slippage_bps = self._estimate_slippage_bps(order_notional, book_depth)
+
+        result = self._vwap_execute(
+            symbol, direction, size, entry_price,
+            book_depth, est_slippage_bps, volume_profile,
+        )
+
+        if result.success and atr > 0:
+            self.trailing_stops[symbol] = TrailingStop(
+                asset=symbol, direction=direction,
+                initial_stop=stop_loss, current_stop=stop_loss,
+                trail_atr_mult=2.0, highest_favorable=result.price,
+            )
+            self._arrival_prices[symbol] = signal_price or entry_price
+            self._total_executions += 1
+            self._total_slippage_bps += result.slippage_bps
+
+        self.execution_log.append(result)
+        return result
+
+    # ================================================================
+    # Limit Order Bias Execution
+    # ================================================================
+
+    def execute_entry_limit_bias(
+        self,
+        symbol: str,
+        direction: int,
+        size: float,
+        entry_price: float,
+        stop_loss: float,
+        take_profit: float,
+        signal_price: float,
+        atr: float = 0,
+        book_depth_usd: float = None,
+        spread_bps: float = 2.0,
+        fill_probability: float = 0.85,
+    ) -> SmartOrderResult:
+        """Execute entry with limit order bias — capture the spread.
+
+        Instead of crossing the spread with a market order, place a limit
+        order on the passive side. This SAVES the spread (~2 bps per side
+        for BTC, ~5 bps for alts) but risks not getting filled.
+
+        Models:
+            - fill_probability: chance of full fill (85% default for crypto)
+            - If not filled, falls back to market with delay penalty
+            - Net effect: ~40% slippage reduction on average
+        """
+        side = "buy" if direction == 1 else "sell"
+
+        if signal_price > 0 and entry_price > 0:
+            gap_pct = abs(entry_price / signal_price - 1) * 100
+            if gap_pct > self.max_price_gap_pct:
+                return SmartOrderResult(
+                    success=False, symbol=symbol, side=side,
+                    error=f"Price gap {gap_pct:.1f}%",
+                    is_paper=self.paper_mode,
+                )
+
+        book_depth = book_depth_usd or self.default_book_depth
+
+        if self.paper_mode:
+            rng = np.random.default_rng()
+            filled_as_limit = rng.random() < fill_probability
+
+            if filled_as_limit:
+                spread_pct = spread_bps / 10000
+                if direction == 1:
+                    fill_price = entry_price * (1 - spread_pct / 2)
+                else:
+                    fill_price = entry_price * (1 + spread_pct / 2)
+
+                slippage = abs(fill_price / entry_price - 1) * 10000
+                if direction == 1 and fill_price < entry_price:
+                    slippage = -slippage
+                elif direction == -1 and fill_price > entry_price:
+                    slippage = -slippage
+
+                result = SmartOrderResult(
+                    success=True,
+                    order_id=f"limit_{symbol}_{int(time.time())}",
+                    symbol=symbol, side=side,
+                    price=fill_price, size=size, requested_size=size,
+                    cost=fill_price * size,
+                    slippage_bps=slippage,
+                    is_paper=True, algo="limit_bias",
+                )
+            else:
+                order_notional = size * entry_price
+                est_slip = self._estimate_slippage_bps(order_notional, book_depth)
+                delay_penalty_bps = 3.0
+                total_slip = est_slip + delay_penalty_bps
+
+                if direction == 1:
+                    fill_price = entry_price * (1 + total_slip / 10000)
+                else:
+                    fill_price = entry_price * (1 - total_slip / 10000)
+
+                result = SmartOrderResult(
+                    success=True,
+                    order_id=f"limit_fallback_{symbol}_{int(time.time())}",
+                    symbol=symbol, side=side,
+                    price=fill_price, size=size, requested_size=size,
+                    cost=fill_price * size,
+                    slippage_bps=total_slip,
+                    is_paper=True, algo="limit_bias_fallback",
+                )
+        else:
+            try:
+                limit_offset = -spread_bps / 20000 if direction == 1 else spread_bps / 20000
+                limit_price = entry_price * (1 + limit_offset)
+                order = self.exchange.create_order(
+                    symbol=symbol, type="limit",
+                    side=side, amount=size, price=limit_price,
+                )
+                fill_price = order.get("average", order.get("price", limit_price))
+                filled = order.get("filled", 0)
+                actual_slip = abs(fill_price / entry_price - 1) * 10000
+                result = SmartOrderResult(
+                    success=filled > 0,
+                    order_id=order.get("id", ""),
+                    symbol=symbol, side=side,
+                    price=fill_price, size=filled,
+                    requested_size=size, unfilled=size - filled,
+                    slippage_bps=actual_slip,
+                    is_paper=False, algo="limit_bias",
+                )
+            except Exception as e:
+                result = SmartOrderResult(
+                    success=False, symbol=symbol, side=side,
+                    error=str(e), is_paper=False,
+                )
+
+        if result.success:
+            if atr > 0:
+                self.trailing_stops[symbol] = TrailingStop(
+                    asset=symbol, direction=direction,
+                    initial_stop=stop_loss, current_stop=stop_loss,
+                    trail_atr_mult=2.0, highest_favorable=result.price,
+                )
+            self._arrival_prices[symbol] = signal_price or entry_price
+            self._total_executions += 1
+            self._total_slippage_bps += result.slippage_bps
+
+        self.execution_log.append(result)
+        return result
+
+    def choose_algo(
+        self,
+        order_notional: float,
+        urgency: str = "normal",
+        book_depth_usd: float = None,
+    ) -> str:
+        """Smart order routing: choose the best execution algorithm.
+
+        Returns: "market", "limit_bias", "vwap", or "twap"
+        """
+        book_depth = book_depth_usd or self.default_book_depth
+        participation = order_notional / book_depth
+
+        if urgency == "high":
+            if participation > 0.1:
+                return "twap"
+            return "market"
+        if urgency == "low":
+            return "limit_bias"
+        # Normal urgency
+        if participation > 0.1:
+            return "vwap"
+        elif participation > 0.02:
+            return "limit_bias"
+        else:
+            return "market"

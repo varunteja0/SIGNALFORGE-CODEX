@@ -14,12 +14,17 @@ data/cache/
 data/*.csv
 data/*.parquet
 
-# Fund runtime data (DB, logs, ledger)
+# Fund runtime data (DB, logs, ledger, state)
 fund_data/*.db
 fund_data/*.db-shm
 fund_data/*.db-wal
 fund_data/*.log
 fund_data/ledger.json
+fund_data/adaptation_log.json
+fund_data/alert_log.json
+fund_data/live_state.json
+fund_data/test_state.json
+fund_data/portfolio_config.json
 
 # Logs
 *.log

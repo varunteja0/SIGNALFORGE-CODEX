@@ -1,0 +1,377 @@
+"""
+SignalForge — Alert Monitor
+=============================
+Background daemon that watches for critical events and sends notifications.
+
+Alerts on:
+  1. New trade executed (entry or exit)
+  2. Drawdown threshold breach (5%, 10%, 15%)
+  3. Divergence spike (slippage > 10bps, PnL drift > 20%)
+  4. Safety rail triggered (DD kill, daily limit, streak halt)
+  5. System health (paper trader alive check)
+
+Notifications:
+  - macOS native (always)
+  - Telegram (if TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID set)
+
+Run: python scripts/alerts.py
+"""
+
+import os
+import sys
+import json
+import time
+import subprocess
+import logging
+from pathlib import Path
+from datetime import datetime, timezone
+from typing import Optional
+
+# ── Paths ────────────────────────────────────────────────────────
+
+ROOT = Path(__file__).parent.parent
+JOURNAL = ROOT / "fund_data" / "trade_journal.json"
+STATE = ROOT / "fund_data" / "live_state.json"
+DIVERGENCE = ROOT / "fund_data" / "divergence_log.json"
+ALERT_LOG = ROOT / "fund_data" / "alert_log.json"
+
+# ── Config ───────────────────────────────────────────────────────
+
+POLL_INTERVAL = 30          # seconds between checks
+DD_WARN_LEVELS = [0.05, 0.10, 0.15]   # 5%, 10%, 15%
+SLIP_WARN_BPS = 10          # entry slippage warning
+PNL_DRIFT_WARN = 20         # % PnL divergence warning
+STALE_MINUTES = 90          # if no state update for 90 min, alert
+
+# Telegram (optional)
+TG_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TG_CHAT = os.environ.get("TELEGRAM_CHAT_ID", "")
+
+# ── Logging ──────────────────────────────────────────────────────
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [ALERT] %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(ROOT / "alerts.log"),
+    ],
+)
+log = logging.getLogger("alerts")
+
+# ── Notification Backends ────────────────────────────────────────
+
+def notify_macos(title: str, message: str, sound: str = "Ping"):
+    """Send macOS notification via osascript."""
+    try:
+        script = f'display notification "{message}" with title "{title}" sound name "{sound}"'
+        subprocess.run(["osascript", "-e", script], timeout=5, capture_output=True)
+    except Exception as e:
+        log.warning(f"macOS notify failed: {e}")
+
+
+def notify_telegram(title: str, message: str):
+    """Send Telegram message if configured."""
+    if not TG_TOKEN or not TG_CHAT:
+        return
+    try:
+        import urllib.request
+        text = f"*{title}*\n{message}"
+        url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
+        data = json.dumps({
+            "chat_id": TG_CHAT,
+            "text": text,
+            "parse_mode": "Markdown",
+        }).encode()
+        req = urllib.request.Request(url, data=data,
+                                     headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=10)
+    except Exception as e:
+        log.warning(f"Telegram notify failed: {e}")
+
+
+def alert(title: str, message: str, level: str = "info", sound: str = "Ping"):
+    """Send alert via all channels + log it."""
+    log.info(f"[{level.upper()}] {title}: {message}")
+
+    # macOS
+    if level == "critical":
+        sound = "Sosumi"
+    elif level == "warning":
+        sound = "Basso"
+    notify_macos(title, message, sound)
+
+    # Telegram
+    if level in ("critical", "warning"):
+        notify_telegram(title, message)
+
+    # Persist to alert log
+    _log_alert(title, message, level)
+
+
+def _log_alert(title: str, message: str, level: str):
+    """Append to alert log file."""
+    entry = {
+        "time": datetime.now(timezone.utc).isoformat(),
+        "level": level,
+        "title": title,
+        "message": message,
+    }
+    try:
+        existing = json.loads(ALERT_LOG.read_text()) if ALERT_LOG.exists() else []
+    except Exception:
+        existing = []
+    existing.append(entry)
+    # Keep last 500
+    existing = existing[-500:]
+    ALERT_LOG.write_text(json.dumps(existing, indent=2))
+
+
+# ── File Readers ─────────────────────────────────────────────────
+
+def read_json(path: Path) -> Optional[any]:
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return None
+
+
+# ── Monitor State ────────────────────────────────────────────────
+
+class AlertMonitor:
+    def __init__(self):
+        self.last_trade_count = 0
+        self.last_open_count = 0
+        self.dd_alerted = set()    # DD levels already alerted
+        self.div_alerted = set()   # trade IDs already alerted for divergence
+        self.stale_alerted = False
+        self.last_state_mtime = 0
+
+    def check_trades(self, journal: list, state: dict):
+        """Alert on new trade entries and exits."""
+        n = len(journal)
+
+        if n > self.last_trade_count:
+            # New closed trades
+            new_trades = journal[self.last_trade_count:]
+            for t in new_trades:
+                tid = t.get("id", "?")
+                strat = t.get("strategy", "?")
+                sym = t.get("symbol", "?").split("/")[0]
+                direction = "LONG" if t.get("direction", 1) == 1 else "SHORT"
+                pnl = t.get("pnl", 0)
+                reason = t.get("exit_reason", "?")
+                pnl_str = f"+${pnl:.2f}" if pnl > 0 else f"-${abs(pnl):.2f}"
+                result = "WIN ✅" if pnl > 0 else "LOSS ❌"
+
+                alert(
+                    f"Trade Closed: {result}",
+                    f"{tid} {strat} {direction} {sym} → {pnl_str} ({reason})",
+                    level="info" if pnl > 0 else "warning",
+                )
+
+            self.last_trade_count = n
+
+        # Check for new position opens
+        n_open = len(state.get("open_positions", []))
+        if n_open > self.last_open_count:
+            new_count = n_open - self.last_open_count
+            positions = state.get("open_positions", [])[-new_count:]
+            for p in positions:
+                strat = p.get("strategy", "?")
+                sym = p.get("symbol", "?").split("/")[0]
+                direction = "LONG" if p.get("direction", 1) == 1 else "SHORT"
+                entry = p.get("entry_price", 0)
+                size = p.get("size_usd", 0)
+
+                alert(
+                    "New Position Opened",
+                    f"{strat} {direction} {sym} @ ${entry:,.2f} (${size:,.0f})",
+                    level="info",
+                )
+        self.last_open_count = n_open
+
+    def check_drawdown(self, state: dict):
+        """Alert on drawdown threshold breaches."""
+        capital = state.get("capital", 0)
+        initial = state.get("initial_capital", 0)
+        if initial <= 0:
+            return
+
+        dd = (initial - capital) / initial
+        if dd < 0:
+            # In profit, reset alerts
+            self.dd_alerted.clear()
+            return
+
+        for level in DD_WARN_LEVELS:
+            if dd >= level and level not in self.dd_alerted:
+                self.dd_alerted.add(level)
+                severity = "critical" if level >= 0.15 else "warning"
+                alert(
+                    f"Drawdown Alert: {level:.0%}",
+                    f"Portfolio DD = {dd:.1%} | Capital: ${capital:,.2f} (from ${initial:,.2f})",
+                    level=severity,
+                )
+
+    def check_divergence(self, div_data: list):
+        """Alert on slippage or PnL divergence spikes."""
+        if not div_data:
+            return
+
+        for d in div_data:
+            key = f"{d.get('strategy', '')}_{d.get('timestamp', '')}"
+            if key in self.div_alerted:
+                continue
+
+            slip = abs(d.get("entry_slippage_bps", 0))
+            drift = abs(d.get("pnl_divergence_pct", 0))
+
+            if slip > SLIP_WARN_BPS:
+                self.div_alerted.add(key)
+                alert(
+                    "High Slippage Detected",
+                    f"{d.get('strategy', '?')} {d.get('symbol', '?')}: {slip:.1f} bps entry slippage",
+                    level="warning",
+                )
+
+            if drift > PNL_DRIFT_WARN:
+                self.div_alerted.add(key)
+                alert(
+                    "PnL Divergence Spike",
+                    f"{d.get('strategy', '?')} {d.get('symbol', '?')}: {drift:.1f}% PnL drift from backtest",
+                    level="warning",
+                )
+
+    def check_safety(self, state: dict, journal: list):
+        """Alert if safety rails have been triggered."""
+        capital = state.get("capital", 0)
+        initial = state.get("initial_capital", 0)
+
+        # DD kill-switch
+        if initial > 0:
+            dd = (initial - capital) / initial
+            if dd >= 0.15:
+                alert(
+                    "🚨 KILL-SWITCH ACTIVE",
+                    f"DD = {dd:.1%} — system has halted new entries",
+                    level="critical",
+                )
+
+        # Daily loss check
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        today_pnl = sum(
+            t.get("pnl", 0)
+            for t in journal
+            if t.get("exit_time", "").startswith(today)
+        )
+        daily_limit = capital * 0.02
+        if today_pnl < -daily_limit and daily_limit > 0:
+            alert(
+                "Daily Loss Limit Hit",
+                f"Today: ${today_pnl:+,.2f} (limit: -${daily_limit:,.0f})",
+                level="warning",
+            )
+
+        # Consecutive losses
+        if len(journal) >= 8:
+            last8 = journal[-8:]
+            if all(t.get("pnl", 0) < 0 for t in last8):
+                alert(
+                    "8 Consecutive Losses",
+                    "System has paused entries for 1 tick",
+                    level="warning",
+                )
+
+    def check_health(self):
+        """Alert if paper trader appears to have stopped."""
+        if not STATE.exists():
+            if not self.stale_alerted:
+                alert(
+                    "System Not Running",
+                    "No live_state.json found — is paper trader running?",
+                    level="warning",
+                )
+                self.stale_alerted = True
+            return
+
+        mtime = STATE.stat().st_mtime
+        age_min = (time.time() - mtime) / 60
+
+        if age_min > STALE_MINUTES and not self.stale_alerted:
+            alert(
+                "System May Be Stalled",
+                f"State file not updated for {age_min:.0f} minutes",
+                level="warning",
+            )
+            self.stale_alerted = True
+        elif age_min <= STALE_MINUTES:
+            self.stale_alerted = False
+
+    def tick(self):
+        """Run one check cycle."""
+        state = read_json(STATE) or {}
+        journal = read_json(JOURNAL) or []
+        div_data = read_json(DIVERGENCE)
+        if isinstance(div_data, dict):
+            div_data = div_data.get("comparisons", [])
+        if not isinstance(div_data, list):
+            div_data = []
+
+        self.check_trades(journal, state)
+        self.check_drawdown(state)
+        self.check_divergence(div_data)
+        self.check_safety(state, journal)
+        self.check_health()
+
+    def run(self):
+        """Main loop."""
+        alert(
+            "Alert Monitor Started",
+            f"Watching every {POLL_INTERVAL}s | DD warns: {[f'{l:.0%}' for l in DD_WARN_LEVELS]}",
+            level="info",
+        )
+
+        # Sync with current state
+        journal = read_json(JOURNAL) or []
+        state = read_json(STATE) or {}
+        self.last_trade_count = len(journal)
+        self.last_open_count = len(state.get("open_positions", []))
+
+        while True:
+            try:
+                self.tick()
+            except Exception as e:
+                log.error(f"Monitor error: {e}", exc_info=True)
+            time.sleep(POLL_INTERVAL)
+
+
+# ── Entry Point ──────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    print("""
+╔══════════════════════════════════════════════════════════════╗
+║           SIGNALFORGE — ALERT MONITOR                      ║
+║                                                              ║
+║  Watching for:                                               ║
+║    📊 New trades (entries + exits)                            ║
+║    📉 Drawdown breaches (5%, 10%, 15%)                       ║
+║    ⚠️  Divergence spikes (slippage, PnL drift)               ║
+║    🛑 Safety rail triggers                                   ║
+║    💓 System health (stale detection)                        ║
+║                                                              ║
+║  Notifications: macOS native""" +
+          (" + Telegram" if TG_TOKEN else "") + """
+║                                                              ║
+║  Poll interval: """ + f"{POLL_INTERVAL}s" + """                                        ║
+║  Ctrl+C to stop.                                             ║
+╚══════════════════════════════════════════════════════════════╝
+""")
+
+    monitor = AlertMonitor()
+    try:
+        monitor.run()
+    except KeyboardInterrupt:
+        log.info("Alert monitor stopped.")
