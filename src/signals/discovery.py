@@ -219,8 +219,8 @@ class SignalDiscovery:
             signals = pd.Series(0, index=df.index)
             both_up = (df[s_col] > 0) & (df[l_col] > 0)
             both_down = (df[s_col] < 0) & (df[l_col] < 0)
-            signals[both_up & ~both_up.shift(1).fillna(False)] = 1
-            signals[both_down & ~both_down.shift(1).fillna(False)] = -1
+            signals[both_up & ~both_up.shift(1, fill_value=False)] = 1
+            signals[both_down & ~both_down.shift(1, fill_value=False)] = -1
             return signals
         return generate
 
@@ -287,8 +287,8 @@ class SignalDiscovery:
             up_break = df["close"] > df["bb_upper_20"]
             down_break = df["close"] < df["bb_lower_20"]
 
-            signals[squeeze.shift(1).fillna(False) & vol_spike & up_break] = 1
-            signals[squeeze.shift(1).fillna(False) & vol_spike & down_break] = -1
+            signals[squeeze.shift(1, fill_value=False) & vol_spike & up_break] = 1
+            signals[squeeze.shift(1, fill_value=False) & vol_spike & down_break] = -1
             return signals
         return generate
 

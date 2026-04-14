@@ -21,6 +21,7 @@ More features = richer search space = stronger alpha.
 """
 
 import logging
+import warnings
 import numpy as np
 import pandas as pd
 from typing import Optional
@@ -40,6 +41,16 @@ def compute_all_features(df: pd.DataFrame, include_calendar: bool = True) -> pd.
     """
     df = df.copy()
 
+    # Suppress expected fragmentation warnings from incremental column assignments
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", pd.errors.PerformanceWarning)
+        df = _compute_all_features_inner(df, include_calendar)
+
+    return df
+
+
+def _compute_all_features_inner(df: pd.DataFrame, include_calendar: bool) -> pd.DataFrame:
+    """Inner implementation - computes all features."""
     # ================================================================
     # 1. RETURNS — Multi-horizon, log, volatility-adjusted
     # ================================================================

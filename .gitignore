@@ -1,6 +1,7 @@
 # Environment
 .env
 .vscode/
+.venv/
 
 # Python
 __pycache__/
@@ -15,6 +16,8 @@ data/*.parquet
 
 # Fund runtime data (DB, logs, ledger)
 fund_data/*.db
+fund_data/*.db-shm
+fund_data/*.db-wal
 fund_data/*.log
 fund_data/ledger.json
 

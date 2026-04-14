@@ -63,6 +63,18 @@ from src.execution.smart import SmartExecutionEngine
 from src.fund.database import Database
 from src.fund.manager_v2 import AutonomousFundManagerV2, FundStateV2
 
+# V3.0 — Advanced Intelligence imports
+from src.data.thegraph import TheGraphFetcher
+from src.sentiment.engine import SentimentEngine
+from src.liquidation.multichain import MultiChainLiquidationOracle
+from src.regime.transformer import TransformerRegimePredictor
+from src.alpha_genome.meta_evolution import MetaEvolutionEngine
+from src.liquidation.predictive import LiquidationTimingPredictor
+from src.arbitrage.funding import FundingArbEngine
+from src.execution.mev import MEVExecutionEngine
+from src.execution.market_maker import SyntheticMarketMaker, MMConfig
+from src.risk.rl_portfolio import RLPortfolioManager
+
 console = Console()
 
 # Setup logging
@@ -1416,6 +1428,315 @@ def cmd_api(config: dict):
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
 
 
+# ==============================================================================
+# V3.0 COMMANDS — Advanced Intelligence Layer
+# ==============================================================================
+
+
+def cmd_sentiment(config: dict):
+    """Show social sentiment analysis from Reddit, Fear & Greed, CoinGecko."""
+    console.print("\n[bold magenta]SOCIAL SENTIMENT INTELLIGENCE[/bold magenta]")
+    console.print("Analyzing crowd psychology from Reddit, Fear & Greed Index...\n")
+
+    engine = SentimentEngine()
+
+    for symbol in config["trading"]["symbols"][:3]:
+        asset = symbol.split("/")[0]
+        console.print(f"\n[cyan]━━━ {asset} Sentiment ━━━[/cyan]")
+
+        agg = engine.get_aggregate_sentiment(asset)
+
+        score = agg.get("composite_score", 0)
+        label = agg.get("label", "neutral")
+        label_colors = {
+            "extreme_fear": "red", "fear": "bright_red",
+            "neutral": "white",
+            "greed": "bright_green", "extreme_greed": "green",
+        }
+        style = label_colors.get(label, "white")
+
+        console.print(f"  Composite Score: [{style}]{score:.2f} ({label.upper()})[/{style}]")
+        console.print(f"  Fear & Greed:    {agg.get('fear_greed_value', 'N/A')}")
+        console.print(f"  Reddit Score:    {agg.get('reddit_score', 'N/A'):.2f}")
+        console.print(f"  Social Volume:   {agg.get('social_volume', 0):.0f}")
+        console.print(f"  Contrarian:      {'YES' if agg.get('contrarian_signal', False) else 'No'}")
+
+    # Show features for GP
+    features = engine.compute_sentiment_features("BTC")
+    feat_table = Table(title="\nSentiment Features (Fed to Alpha Genome)", box=box.ROUNDED)
+    feat_table.add_column("Feature", style="cyan")
+    feat_table.add_column("Value", justify="right")
+    for k, v in sorted(features.items()):
+        feat_table.add_row(k, f"{v:.4f}")
+    console.print(feat_table)
+
+
+def cmd_multichain(config: dict):
+    """Show cross-chain liquidation risk analysis."""
+    console.print("\n[bold red]MULTI-CHAIN LIQUIDATION ORACLE[/bold red]")
+    console.print("Aggregating DeFi risk across Ethereum, Arbitrum, Optimism, Polygon, Base...\n")
+
+    oracle = MultiChainLiquidationOracle()
+
+    for symbol in config["trading"]["symbols"][:3]:
+        asset = symbol.split("/")[0]
+        console.print(f"\n[cyan]━━━ {asset} Cross-Chain Risk ━━━[/cyan]")
+
+        risk = oracle.assess_cross_chain_risk(asset)
+
+        risk_color = "red" if risk.aggregate_risk_score > 60 else "yellow" if risk.aggregate_risk_score > 30 else "green"
+        console.print(f"  Aggregate Risk: [{risk_color}]{risk.aggregate_risk_score:.0f}/100[/{risk_color}]")
+        console.print(f"  Total At Risk:  ${risk.total_at_risk_usd:,.0f}")
+        console.print(f"  Cross-Chain Contagion: {risk.cross_chain_contagion:.2f}")
+
+        if risk.chain_risks:
+            chain_table = Table(box=box.SIMPLE)
+            chain_table.add_column("Chain", style="cyan")
+            chain_table.add_column("Risk", justify="right")
+            chain_table.add_column("At Risk", justify="right")
+            chain_table.add_column("Positions", justify="right")
+            for cr in risk.chain_risks:
+                c_style = "red" if cr.risk_score > 50 else "yellow" if cr.risk_score > 25 else "green"
+                chain_table.add_row(
+                    cr.chain, f"[{c_style}]{cr.risk_score:.0f}[/{c_style}]",
+                    f"${cr.total_at_risk_usd:,.0f}", str(cr.n_positions),
+                )
+            console.print(chain_table)
+
+        console.print(f"  Recommendation: [bold]{risk.recommendation}[/bold]")
+
+
+def cmd_predict_liq(config: dict):
+    """Predict WHEN liquidation cascades will occur."""
+    console.print("\n[bold red]PREDICTIVE LIQUIDATION TIMING[/bold red]")
+    console.print("Predicting cascade timing at 1h, 4h, and 24h horizons...\n")
+
+    data_engine = DataEngine(
+        exchange_name=config["exchange"]["name"],
+        testnet=config["exchange"]["testnet"],
+    )
+    predictor = LiquidationTimingPredictor()
+
+    for symbol in config["trading"]["symbols"][:3]:
+        asset = symbol.split("/")[0]
+        console.print(f"\n[cyan]━━━ {symbol} Cascade Timing ━━━[/cyan]")
+
+        try:
+            df = data_engine.fetch_ohlcv(symbol, "1h", 500)
+            if df.empty:
+                continue
+            df = compute_all_features(df)
+            df = df.dropna()
+
+            prediction = predictor.predict(df, asset=asset)
+
+            colors_1h = "red" if prediction.probability_1h > 0.5 else "yellow" if prediction.probability_1h > 0.2 else "green"
+            colors_4h = "red" if prediction.probability_4h > 0.5 else "yellow" if prediction.probability_4h > 0.2 else "green"
+            colors_24h = "red" if prediction.probability_24h > 0.5 else "yellow" if prediction.probability_24h > 0.2 else "green"
+
+            console.print(f"  1h Cascade P:  [{colors_1h}]{prediction.probability_1h:.1%}[/{colors_1h}]")
+            console.print(f"  4h Cascade P:  [{colors_4h}]{prediction.probability_4h:.1%}[/{colors_4h}]")
+            console.print(f"  24h Cascade P: [{colors_24h}]{prediction.probability_24h:.1%}[/{colors_24h}]")
+            console.print(f"  Severity:      {prediction.expected_severity}")
+            console.print(f"  Action:        [bold]{prediction.recommended_action}[/bold]")
+            console.print(f"  Confidence:    {prediction.confidence:.0%}")
+
+            if prediction.key_drivers:
+                console.print(f"  Key Drivers:   {', '.join(prediction.key_drivers[:3])}")
+
+        except Exception as e:
+            console.print(f"  [red]Error: {e}[/red]")
+
+
+def cmd_funding_arb(config: dict):
+    """Scan for cross-exchange funding rate arbitrage opportunities."""
+    console.print("\n[bold green]FUNDING RATE ARBITRAGE SCANNER[/bold green]")
+    console.print("Scanning Binance, Bybit, OKX for delta-neutral yield...\n")
+
+    engine = FundingArbEngine()
+    summary = engine.get_arb_summary()
+
+    console.print(f"  Opportunities Found: {summary['n_opportunities']}")
+    if summary['best_spread_annual'] > 0:
+        console.print(f"  Best Annual Yield:   [green]{summary['best_spread_annual']:.1f}%[/green]")
+        console.print(f"  Best Symbol:         {summary['best_symbol']}")
+
+    if summary['opportunities']:
+        table = Table(title="\nFunding Rate Arbitrage Opportunities", box=box.DOUBLE_EDGE)
+        table.add_column("Symbol", style="cyan")
+        table.add_column("Long", style="green")
+        table.add_column("Short", style="red")
+        table.add_column("Annual %", justify="right", style="green")
+        table.add_column("Per 8h", justify="right")
+        table.add_column("Basis Risk", justify="right")
+        table.add_column("Confidence", justify="right")
+        table.add_column("Next Funding", justify="right")
+
+        for opp in summary['opportunities']:
+            table.add_row(
+                opp['symbol'], opp['long'], opp['short'],
+                opp['spread_annual'], opp['spread_8h'],
+                opp['basis_risk'], opp['confidence'], opp['next_funding'],
+            )
+        console.print(table)
+    else:
+        console.print("[yellow]No actionable opportunities at current rates.[/yellow]")
+
+    # Show features
+    features = engine.compute_features("BTC/USDT")
+    console.print(f"\n  BTC Funding Features: avg={features['funding_avg']:.4f}%, spread={features['funding_spread_max']:.4f}%")
+
+
+def cmd_mev(config: dict):
+    """Show MEV environment metrics and execution planning."""
+    console.print("\n[bold blue]MEV-AWARE EXECUTION ENGINE[/bold blue]")
+    console.print("Monitoring gas, Flashbots, and order flow toxicity...\n")
+
+    engine = MEVExecutionEngine(
+        max_slippage_bps=config.get("execution", {}).get("max_slippage_bps", 50),
+    )
+
+    metrics = engine.fetch_mev_metrics()
+    intensity_color = "red" if metrics.mev_intensity > 0.6 else "yellow" if metrics.mev_intensity > 0.3 else "green"
+
+    console.print(f"  Gas Price:        {metrics.gas_price_gwei:.1f} gwei")
+    console.print(f"  Gas Percentile:   {metrics.gas_price_percentile:.0%}")
+    console.print(f"  Flashbots Rate:   {metrics.flashbots_blocks_pct:.0%}")
+    console.print(f"  MEV Intensity:    [{intensity_color}]{metrics.mev_intensity:.0%}[/{intensity_color}]")
+
+    # Show execution plans for different scenarios
+    console.print("\n[bold]Execution Planning Scenarios:[/bold]")
+    scenarios = [
+        ("Small Buy $5K", "buy", 5000, False),
+        ("Large Buy $100K", "buy", 100000, False),
+        ("Liquidation Snipe $50K", "buy", 50000, True),
+    ]
+
+    plan_table = Table(box=box.ROUNDED)
+    plan_table.add_column("Scenario", style="cyan")
+    plan_table.add_column("Strategy", style="bold")
+    plan_table.add_column("Slices", justify="right")
+    plan_table.add_column("Est. Slippage", justify="right")
+    plan_table.add_column("Est. MEV Cost", justify="right")
+    plan_table.add_column("Reason", style="dim")
+
+    for name, side, size, liq in scenarios:
+        plan = engine.plan_execution(side, size, mev_metrics=metrics, is_liquidation_nearby=liq)
+        plan_table.add_row(
+            name, plan.strategy, str(plan.n_slices),
+            f"{plan.estimated_slippage_bps:.1f} bps",
+            f"{plan.estimated_mev_cost_bps:.1f} bps",
+            plan.reason[:50],
+        )
+    console.print(plan_table)
+
+
+def cmd_meta_evolve(config: dict):
+    """Run meta-evolution to discover optimal GP hyperparameters."""
+    console.print("\n[bold magenta]META-EVOLUTION — SELF-IMPROVING GP[/bold magenta]")
+    console.print("Evolving the evolution parameters themselves...\n")
+
+    ag_config = config.get("alpha_genome", {})
+    data_engine = DataEngine(
+        exchange_name=config["exchange"]["name"],
+        testnet=config["exchange"]["testnet"],
+    )
+
+    meta_engine = MetaEvolutionEngine(
+        meta_population_size=ag_config.get("meta_population_size", 10),
+        meta_generations=ag_config.get("meta_generations", 5),
+        inner_generations=min(ag_config.get("max_generations", 50), 20),
+        commission_pct=config["backtest"]["commission_pct"],
+        slippage_pct=config["backtest"]["slippage_pct"],
+    )
+
+    symbol = config["trading"]["symbols"][0]
+    console.print(f"[cyan]Running meta-evolution on {symbol} 1h...[/cyan]")
+
+    df = data_engine.fetch_ohlcv(symbol, "1h", config["trading"]["lookback_bars"])
+    if df.empty:
+        console.print("[red]No data available.[/red]")
+        return
+
+    df = compute_all_features(df)
+    df = df.dropna()
+    console.print(f"Data: {len(df)} bars, {len(df.columns)} features\n")
+
+    def progress_cb(gen, total, best_fitness, best_config):
+        console.print(
+            f"  Meta-Gen {gen}/{total} | "
+            f"Best fitness: {best_fitness:.4f} | "
+            f"pop={best_config.population_size} "
+            f"mut={best_config.mutation_rate:.3f} "
+            f"depth={best_config.max_tree_depth}"
+        )
+
+    best_config, strategies = meta_engine.evolve(
+        df, symbol=symbol, timeframe="1h",
+        progress_callback=progress_cb,
+    )
+
+    console.print(f"\n[bold green]OPTIMAL EVOLUTION PARAMETERS:[/bold green]")
+    console.print(f"  Population Size:   {best_config.population_size}")
+    console.print(f"  Mutation Rate:     {best_config.mutation_rate:.3f}")
+    console.print(f"  Crossover Rate:    {best_config.crossover_rate:.3f}")
+    console.print(f"  Tree Depth:        {best_config.max_tree_depth}")
+    console.print(f"  Tournament Size:   {best_config.tournament_size}")
+    console.print(f"  WF Splits:         {best_config.walk_forward_splits}")
+    console.print(f"  Feature Subset:    {best_config.feature_subset_pct:.0%}")
+    console.print(f"  Strategies Found:  {len(strategies)}")
+
+
+def cmd_transformer_regime(config: dict):
+    """Run transformer-based regime prediction."""
+    console.print("\n[bold magenta]TRANSFORMER REGIME PREDICTOR[/bold magenta]")
+    console.print("Predicting regime transitions BEFORE they happen...\n")
+
+    data_engine = DataEngine(
+        exchange_name=config["exchange"]["name"],
+        testnet=config["exchange"]["testnet"],
+    )
+
+    predictor = TransformerRegimePredictor(
+        n_features=20, seq_len=30, n_heads=4, d_model=32,
+    )
+
+    for symbol in config["trading"]["symbols"][:3]:
+        console.print(f"\n[cyan]━━━ {symbol} Regime Forecast ━━━[/cyan]")
+
+        try:
+            df = data_engine.fetch_ohlcv(symbol, "4h", 500)
+            if df.empty:
+                continue
+            df = compute_all_features(df)
+            df = df.dropna()
+
+            prediction = predictor.predict(df)
+            if prediction is None:
+                console.print("  [yellow]Insufficient data for prediction[/yellow]")
+                continue
+
+            regime_map = {0: "BULL", 1: "BEAR", 2: "SIDEWAYS"}
+            pred_regime = regime_map.get(prediction["predicted_regime"], "UNKNOWN")
+            regime_colors = {"BULL": "green", "BEAR": "red", "SIDEWAYS": "yellow"}
+            style = regime_colors.get(pred_regime, "white")
+
+            console.print(f"  Predicted Regime:  [{style}]{pred_regime}[/{style}]")
+            console.print(f"  Confidence:        {prediction['confidence']:.0%}")
+            console.print(f"  Vol Forecast:      {prediction['volatility_forecast']:.4f}")
+            console.print(f"  Reversal P:        {prediction['trend_reversal_prob']:.0%}")
+
+            probs = prediction["regime_probabilities"]
+            console.print(f"  Probabilities:")
+            for i, label in enumerate(["Bull", "Bear", "Sideways"]):
+                if i < len(probs):
+                    bar = "█" * int(probs[i] * 30)
+                    console.print(f"    {label:10s} {probs[i]:.0%} {bar}")
+
+        except Exception as e:
+            console.print(f"  [red]Error: {e}[/red]")
+
+
 def cmd_models(config: dict):
     """Model version management."""
     console.print("\n[bold blue]MODEL VERSION MANAGEMENT[/bold blue]\n")
@@ -1488,9 +1809,12 @@ def main():
   [bold magenta]ALPHA GENOME:[/bold magenta]
   python main.py [bold magenta]evolve[/bold magenta]         Evolve novel strategy DNA via genetic programming
   python main.py [bold magenta]ensemble[/bold magenta]       Evolve diverse committee via island-model GP
+  python main.py [bold magenta]meta_evolve[/bold magenta]    Meta-GP: evolve the evolution parameters themselves
   
   [bold red]LIQUIDATION ORACLE:[/bold red]
   python main.py [bold red]liquidation[/bold red]    Map leveraged positions & predict cascades
+  python main.py [bold red]multichain[/bold red]     Cross-chain liquidation risk (ETH, ARB, OP, POLY, BASE)
+  python main.py [bold red]predict_liq[/bold red]    Predict cascade timing (1h/4h/24h horizons)
 
   [bold green]AUTONOMOUS FUND:[/bold green]
   python main.py [bold green]fund[/bold green]           Run AI-managed fund (all layers combined)
@@ -1500,6 +1824,12 @@ def main():
   python main.py [bold yellow]health[/bold yellow]         System health + strategy decay detection
   python main.py [bold yellow]attribution[/bold yellow]    Performance attribution per strategy
   python main.py [bold yellow]onchain[/bold yellow]        On-chain data intelligence (DeFi, whales, leverage)
+  python main.py [bold yellow]sentiment[/bold yellow]      Social sentiment (Reddit, Fear & Greed, CoinGecko)
+  python main.py [bold yellow]transformer[/bold yellow]    Transformer regime prediction (forward-looking)
+
+  [bold green]ALPHA GENERATION:[/bold green]
+  python main.py [bold green]funding_arb[/bold green]    Cross-exchange funding rate arbitrage scanner
+  python main.py [bold green]mev[/bold green]            MEV environment metrics + execution planning
 
   [bold blue]V2.0 — PRODUCTION:[/bold blue]
   python main.py [bold blue]api[/bold blue]            Start monitoring API server
@@ -1524,6 +1854,14 @@ def main():
         "onchain": cmd_onchain,
         "api": cmd_api,
         "models": cmd_models,
+        # V3.0 — Advanced Intelligence
+        "sentiment": cmd_sentiment,
+        "multichain": cmd_multichain,
+        "predict_liq": cmd_predict_liq,
+        "funding_arb": cmd_funding_arb,
+        "mev": cmd_mev,
+        "meta_evolve": cmd_meta_evolve,
+        "transformer": cmd_transformer_regime,
     }
 
     handler = commands.get(command)

@@ -1,0 +1,1 @@
+"""SignalForge Sentiment Analysis Module."""

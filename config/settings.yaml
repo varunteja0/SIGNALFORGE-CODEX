@@ -162,3 +162,89 @@ execution:
 api:
   host: 0.0.0.0
   port: 8000
+
+# ============================================================
+# V3.0 — Social Sentiment Engine
+# ============================================================
+sentiment:
+  subreddits:
+    - CryptoCurrency
+    - Bitcoin
+    - ethereum
+  cache_ttl_seconds: 300
+  contrarian_threshold: 0.8
+
+# ============================================================
+# V3.0 — Multi-Chain Liquidation Oracle
+# ============================================================
+multichain:
+  chains:
+    - ethereum
+    - arbitrum
+    - optimism
+    - polygon
+    - base
+  parallel_fetch: true
+
+# ============================================================
+# V3.0 — Transformer Regime Predictor
+# ============================================================
+transformer_regime:
+  n_heads: 4
+  d_model: 32
+  seq_len: 30
+  n_layers: 2
+
+# ============================================================
+# V3.0 — Meta-Evolution (Self-Improving GP)
+# ============================================================
+meta_evolution:
+  meta_population_size: 10
+  meta_generations: 5
+
+# ============================================================
+# V3.0 — Predictive Liquidation Timing
+# ============================================================
+predictive_liquidation:
+  horizons:
+    - 1h
+    - 4h
+    - 24h
+
+# ============================================================
+# V3.0 — Funding Rate Arbitrage
+# ============================================================
+funding_arb:
+  exchanges:
+    - binance
+    - bybit
+    - okx
+  min_spread_8h_pct: 0.01
+  max_basis_risk_pct: 0.5
+  max_position_usd: 50000
+
+# ============================================================
+# V3.0 — MEV-Aware Execution
+# ============================================================
+mev_execution:
+  twap_window_min: 30
+  iceberg_show_pct: 0.1
+  min_order_usd: 1000
+
+# ============================================================
+# V3.0 — Synthetic Market Maker
+# ============================================================
+market_maker:
+  base_spread_bps: 20
+  max_position_usd: 10000
+  order_size_usd: 500
+  gamma: 0.1
+
+# ============================================================
+# V3.0 — RL Portfolio Manager
+# ============================================================
+rl_portfolio:
+  n_assets: 5
+  lookback: 20
+  max_drawdown_penalty: 2.0
+  min_training_episodes: 50
