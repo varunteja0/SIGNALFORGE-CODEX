@@ -24,7 +24,7 @@ pip install -r requirements.txt
 - **Formatter:** `black` (line length 100)
 - **Linter:** `ruff`
 - **Types:** prefer explicit type hints in public APIs
-- **Tests:** `pytest tests/ -q` must pass locally and in CI
+- **Tests:** `pytest tests/ -q` must pass locally
 
 Before pushing:
 
@@ -49,7 +49,6 @@ test(factory): cover deploy-gate rejection path
 
 - Link the relevant issue, or open one first for anything non-trivial.
 - Describe *what*, *why*, and *how you validated it* (especially for strategy or risk changes).
-- CI must be green.
 - A maintainer will review within a reasonable window — please be patient.
 
 ## Reporting bugs

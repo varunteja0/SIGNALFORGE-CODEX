@@ -4,7 +4,6 @@
 
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![CI](https://github.com/varunteja0/SignalForge/actions/workflows/ci.yml/badge.svg)](https://github.com/varunteja0/SignalForge/actions/workflows/ci.yml)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Status: Research](https://img.shields.io/badge/status-research--grade-orange.svg)](#-status--disclaimer)
 
@@ -250,8 +249,6 @@ The suite covers:
 - Factory pipeline (`test_factory.py`)
 - End-to-end smoke tests (`test_e2e.py`, `test_e2e_full.py`)
 - Institutional validation harness (`tests/validate_all.py`)
-
-CI runs lint + tests on every push (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
 ---
 

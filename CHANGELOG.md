@@ -10,7 +10,6 @@ where practical for research software.
 
 ### Added
 - Professional repository documentation: `README.md`, `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`.
-- GitHub Actions CI workflow (lint + tests on push / PR).
 - Issue and pull-request templates under `.github/`.
 - Hardened `.gitignore` — regenerable artifacts (validation sweeps, cached OHLCV, fund runtime state) are no longer tracked.
 
