@@ -9,6 +9,10 @@ where practical for research software.
 ## [Unreleased]
 
 ### Added
+- **Structured logging** (`src/obs/`) — `structlog`-based observability layer with process-wide `run_id`, contextvar-based binding (`bind_context`), JSON output in non-TTY environments (containers, pipes), human-readable console output in a TTY, optional file tee via `SIGNALFORGE_LOG_FILE`. Level controlled by `SIGNALFORGE_LOG_LEVEL`. 6 unit tests.
+- **Walk-forward harness** (`src/backtest/walk_forward.py`) — rolling-origin evaluation with anchored + rolling schemes, `make_folds()` + `walk_forward()`, aggregates Sharpe mean/std/min/max, pooled geometric return, positive-fold fraction, worst-fold drawdown. 9 unit tests.
+- **Execution fill model** (`src/execution/fill_model.py`) — partial fills capped by per-bar participation, maker-vs-taker regimes with queue-position proxy, per-venue fee schedules (Binance / Bybit / OKX perp defaults), square-root market impact, reproducible via seeded RNG. 14 unit tests.
+- **Dashboard data layer** (`src/ops/dashboard_data.py`) — extracted pure (non-Streamlit) loaders, portfolio summary, and signal-proximity calculations from `scripts/live_dashboard.py`; the Streamlit script now imports from here. 15 unit tests.
 - **Docker** — multi-stage `Dockerfile` (python 3.11-slim, non-root user, venv-isolated) and `docker-compose.yml` with `paper-trader`, `validator`, and `dashboard` services; `.dockerignore` excludes state and caches from the build context.
 - **Pre-commit hooks** (`.pre-commit-config.yaml`) — ruff, black, detect-secrets, and the standard pre-commit-hooks suite (trailing whitespace, EOF, YAML/TOML/JSON lint, private-key detection, large-file guard). Installed via `pre-commit install` after `pip install -e ".[dev]"`.
 - **CodeQL security scanning** (`.github/workflows/codeql.yml`) — weekly + on-push Python analysis with the `security-and-quality` query pack.
@@ -24,8 +28,10 @@ where practical for research software.
 - Hardened `.gitignore` — regenerable artifacts (validation sweeps, cached OHLCV, fund runtime state) are no longer tracked.
 
 ### Changed
+- `scripts/live_dashboard.py` is now a thin rendering shell over `src.ops.dashboard_data`; all loaders and proximity calculations are testable in isolation.
 - Trimmed runtime artifacts from version control to keep the repo reproducible and lean.
 - `[dev]` extras now include `pre-commit` and `detect-secrets`.
+- Runtime dependency added: `structlog>=24.1.0`.
 
 ---
 

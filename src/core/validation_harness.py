@@ -39,7 +39,7 @@ from src.data.features import compute_all_features
 from src.data.structural import StructuralDataFetcher
 from src.factory.scanner import scan
 from src.factory.validator import validate
-from src.factory.deployer import deploy
+from src.factory.deployer import deploy, set_universe
 from src.backtest.engine import Backtester
 
 logger = logging.getLogger(__name__)
@@ -695,6 +695,13 @@ def run_validation(
         (datasets_full[s].index[-1] - datasets_full[s].index[0]).days / 365.25
         for s in datasets_full
     ])
+
+    # Register the universe so cross-sectional and lead-lag families can
+    # read peer asset price series at signal-generation time. Uses the
+    # FULL datasets (not just SCAN) because the signal gen slices to the
+    # passed df's index itself — the registry just provides the price
+    # panel.
+    set_universe(datasets_full)
 
     # ---- 2. Scan on IS data only ----
     print(f"\n[2/5] Scanning IS data for signal hypotheses...")

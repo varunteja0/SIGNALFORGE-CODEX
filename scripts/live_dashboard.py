@@ -28,6 +28,17 @@ import streamlit as st
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+# Pure data layer — loaders, portfolio summary, signal proximity.
+# All non-UI logic lives in src.ops.dashboard_data and is unit-tested.
+from src.ops.dashboard_data import (
+    DEFAULT_ASSETS as ASSETS,
+    compute_signal_proximity,
+    load_divergence,
+    load_journal,
+    load_state,
+    portfolio_summary,
+)
+
 # ─── Page Config ─────────────────────────────────────────────────
 
 st.set_page_config(
@@ -42,95 +53,16 @@ st.set_page_config(
 JOURNAL_PATH = Path("fund_data/trade_journal.json")
 STATE_PATH = Path("fund_data/live_state.json")
 DIVERGENCE_PATH = Path("fund_data/divergence_log.json")
-ASSETS = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT"]
-
-
-def load_state() -> dict:
-    if STATE_PATH.exists():
-        try:
-            return json.loads(STATE_PATH.read_text())
-        except Exception:
-            pass
-    return {}
-
-
-def load_journal() -> list[dict]:
-    if JOURNAL_PATH.exists():
-        try:
-            return json.loads(JOURNAL_PATH.read_text())
-        except Exception:
-            pass
-    return []
-
-
-def load_divergence() -> list[dict]:
-    if DIVERGENCE_PATH.exists():
-        try:
-            data = json.loads(DIVERGENCE_PATH.read_text())
-            return data if isinstance(data, list) else data.get("comparisons", [])
-        except Exception:
-            pass
-    return []
 
 
 @st.cache_data(ttl=120)
 def load_market_snapshot():
-    """Load pre-computed market snapshot from paper trader (lightweight)."""
-    snap_path = Path("fund_data/market_snapshot.json")
-    if snap_path.exists():
-        try:
-            data = json.loads(snap_path.read_text())
-            data.pop("_timestamp", None)
-            return data
-        except Exception:
-            pass
-    return {}
+    """Load pre-computed market snapshot from paper trader (lightweight).
 
-
-def compute_signal_proximity(sym: str, snap: dict) -> dict:
-    """Compute how close each strategy is to firing for this asset."""
-    fz = abs(snap.get("funding_zscore", 0))
-    regime = snap.get("regime", "")
-    bb = snap.get("bb_pctile", 50)
-    vol = snap.get("vol_ratio", 1)
-    atr_exp = snap.get("atr_exp", 1)
-    price = snap.get("price", 0)
-    ch_high = snap.get("ch_high", 0)
-    ch_low = snap.get("ch_low", 0)
-
-    prox = {}
-
-    # funding_mr_v7: needs |z| >= 3.0
-    prox["funding_mr_v7"] = min(fz / 3.0, 1.0) if sym != "SKIP" else 0
-
-    # extreme_spike: needs |z| >= 4.0 + high_vol regime
-    base = min(fz / 4.0, 1.0)
-    regime_ok = 1.0 if regime == "high_volatility" else 0.5
-    if sym == "BTC/USDT":
-        prox["extreme_spike"] = 0  # BTC excluded
-    else:
-        prox["extreme_spike"] = base * regime_ok
-
-    # fund_vol_squeeze: needs bb_pctile <= 10 + |z| >= 2.0
-    sq = max(0, (1 - bb / 10)) if bb <= 10 else 0
-    fz2 = min(fz / 2.0, 1.0)
-    if sym in ["BTC/USDT"]:
-        prox["fund_vol_squeeze"] = 0
-    elif sym in ["ETH/USDT"]:
-        prox["fund_vol_squeeze"] = 0  # ETH removed
-    else:
-        prox["fund_vol_squeeze"] = min(sq, fz2)
-
-    # momentum_breakout: breakout + ATR exp + volume
-    if sym == "ETH/USDT":
-        breakout = 1.0 if (price > ch_high * 0.999 or price < ch_low * 1.001) else min(max(price - ch_low, ch_high - price) / (ch_high - ch_low + 1e-10) * 2, 1.0)
-        atr_pct = min(atr_exp / 1.5, 1.0)
-        vol_pct = min(vol / 1.3, 1.0)
-        prox["momentum_breakout"] = min(breakout, atr_pct, vol_pct)
-    else:
-        prox["momentum_breakout"] = 0  # Only ETH
-
-    return prox
+    Thin cached wrapper around ``src.ops.dashboard_data.load_market_snapshot``.
+    """
+    from src.ops.dashboard_data import load_market_snapshot as _load
+    return _load()
 
 
 # ─── Dashboard Layout ───────────────────────────────────────────

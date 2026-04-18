@@ -27,6 +27,141 @@ logger = logging.getLogger("factory.deployer")
 DEPLOY_DIR = Path("fund_data/deployed_strategies")
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# Universe registry — populated by the harness before deploy() is called.
+# Cross-sectional and lead-lag strategies read peer asset price series
+# from here at signal-generation time. Keys are full symbols ("BTC/USDT"),
+# values are full datasets (SCAN+VAL+OOS concatenated — strategies slice
+# to the current window internally).
+# ═══════════════════════════════════════════════════════════════════════
+UNIVERSE_REGISTRY: dict[str, pd.DataFrame] = {}
+
+
+def set_universe(dfs: dict[str, pd.DataFrame]) -> None:
+    """Harness calls this once at startup with full per-asset datasets."""
+    UNIVERSE_REGISTRY.clear()
+    UNIVERSE_REGISTRY.update(dfs)
+
+
+def _xsec_momentum_signals(
+    df: pd.DataFrame,
+    target_asset: str,
+    direction: int,
+    lookback_bars: int,
+    rebalance_bars: int,
+) -> pd.Series:
+    """Cross-sectional momentum — rank all assets in the universe by
+    trailing-return and take a position based on the target asset's rank.
+
+    At each rebalance bar:
+      1. Compute trailing lookback_bars return for every asset in the
+         registry, aligned on the target asset's index.
+      2. Rank them (1 = worst, N = best).
+      3. If direction == +1: fire long when target is in top-2.
+         If direction == -1: fire short when target is in bottom-2.
+
+    Additional gate: the spread between the top and bottom asset's
+    trailing return must exceed 2% — no trade when the universe is
+    directionless (no clear winner/loser). This prevents the strategy
+    from firing on noise.
+
+    The backtester's hold_bars controls how long the position persists
+    (we don't force-exit at rebalance — the engine's exit rules drive
+    exits, consistent with every other strategy family).
+    """
+    signals = pd.Series(0, index=df.index)
+
+    if len(UNIVERSE_REGISTRY) < 3 or target_asset not in UNIVERSE_REGISTRY:
+        return signals
+
+    # Build aligned return panel on THIS df's index (respects current
+    # window — SCAN during scan, VAL during val, OOS during OOS).
+    trailing_rets = {}
+    for sym, u_df in UNIVERSE_REGISTRY.items():
+        if u_df is None or u_df.empty:
+            continue
+        # Align to target's index via reindex + ffill
+        closes = u_df["close"].reindex(df.index, method="ffill")
+        trailing_rets[sym] = closes.pct_change(lookback_bars)
+
+    if target_asset not in trailing_rets or len(trailing_rets) < 3:
+        return signals
+
+    rets_df = pd.DataFrame(trailing_rets).dropna()
+    if rets_df.empty:
+        return signals
+
+    n_assets = rets_df.shape[1]
+    # top_count = top-2 when universe >=5, else top-1
+    top_k = 2 if n_assets >= 5 else 1
+
+    # Ranks per bar (1..n_assets, higher is better)
+    ranks = rets_df.rank(axis=1, method="average")
+    target_rank = ranks[target_asset]
+
+    # Spread gate: best − worst return on each bar
+    spread = rets_df.max(axis=1) - rets_df.min(axis=1)
+    SPREAD_THRESH = 0.02  # 2% — universe must have a clear winner/loser
+
+    # Rebalance gate: only fire every rebalance_bars, not every bar,
+    # to avoid trade-churn from rank oscillation at the boundary.
+    bar_num = np.arange(len(rets_df))
+    rebal_mask = pd.Series((bar_num % rebalance_bars) == 0, index=rets_df.index)
+
+    if direction > 0:
+        mask = (target_rank >= (n_assets - top_k + 1)) & (spread >= SPREAD_THRESH) & rebal_mask
+    else:
+        mask = (target_rank <= top_k) & (spread >= SPREAD_THRESH) & rebal_mask
+
+    # Re-index to original df (in case of dropna gaps)
+    mask = mask.reindex(df.index, fill_value=False)
+    signals[mask] = direction
+    return signals.astype(int)
+
+
+def _leadlag_btc_signals(
+    df: pd.DataFrame,
+    target_asset: str,
+    direction: int,
+    trigger_bars: int,
+    trigger_pct: float,
+) -> pd.Series:
+    """BTC lead-lag — when BTC has a sharp trigger_bars move, the alt
+    tends to overshoot in the next few bars (retail attention flow,
+    cross-exchange arb lag).
+
+    Fires on the alt target when BTC moved >= trigger_pct (for longs)
+    or <= -trigger_pct (for shorts) in the prior trigger_bars. The
+    backtester then holds for hold_bars.
+
+    Only deploys on non-BTC assets (BTC can't lead itself).
+    """
+    signals = pd.Series(0, index=df.index)
+    btc_key = None
+    for k in UNIVERSE_REGISTRY:
+        if k.startswith("BTC"):
+            btc_key = k
+            break
+    if btc_key is None or target_asset == btc_key:
+        return signals
+
+    btc_df = UNIVERSE_REGISTRY[btc_key]
+    if btc_df is None or btc_df.empty:
+        return signals
+
+    btc_close = btc_df["close"].reindex(df.index, method="ffill")
+    btc_move = btc_close.pct_change(trigger_bars)
+
+    if direction > 0:
+        mask = btc_move >= trigger_pct
+    else:
+        mask = btc_move <= -trigger_pct
+
+    mask = mask.fillna(False)
+    signals[mask] = direction
+    return signals.astype(int)
+
+
 # ─── Orthogonal signal families (inline, not scanner-discovered) ────────
 # These overlays supply return streams uncorrelated with classic breakout
 # trend-following. They deploy universally on every observed asset and
@@ -181,6 +316,30 @@ class DeployedStrategy:
                     df, self.signal_name, self.direction
                 )
                 matched = (signals != 0).any()
+            elif self.signal_name.startswith("xsec_mom_"):
+                # Parse "xsec_mom_{dir}_lb{lookback}_rb{rebal}"
+                parts = self.signal_name.split("_")
+                try:
+                    lb = int([p for p in parts if p.startswith("lb")][0][2:])
+                    rb = int([p for p in parts if p.startswith("rb")][0][2:])
+                except (IndexError, ValueError):
+                    lb, rb = 168, 24  # default: 7d lookback, daily rebal
+                signals = _xsec_momentum_signals(
+                    df, self.asset, self.direction, lb, rb
+                )
+                matched = (signals != 0).any()
+            elif self.signal_name.startswith("leadlag_btc_"):
+                # Parse "leadlag_btc_{dir}_t{trig_bars}_p{pct_x100}"
+                parts = self.signal_name.split("_")
+                try:
+                    tb = int([p for p in parts if p.startswith("t") and p[1:].isdigit()][0][1:])
+                    pct_x = int([p for p in parts if p.startswith("p") and p[1:].isdigit()][0][1:])
+                except (IndexError, ValueError):
+                    tb, pct_x = 1, 150  # 1h trigger, 1.5% threshold
+                signals = _leadlag_btc_signals(
+                    df, self.asset, self.direction, tb, pct_x / 10000.0
+                )
+                matched = (signals != 0).any()
 
             if not matched:
                 for gen in SIGNAL_GENERATORS:
@@ -205,10 +364,17 @@ class DeployedStrategy:
         #
         # SKIPPED for mean-reversion families: crowding_mr fires INTO a
         # move expecting reversal, so a bull/bear regime gate would
-        # defeat its purpose.
-        is_mean_reversion = self.signal_name.startswith("crowding_mr_")
+        # defeat its purpose. Also skipped for cross-sectional momentum
+        # (ranking is inherently regime-aware) and lead-lag (event-
+        # driven, single-bar trigger — regime gate would kill valid
+        # signals during bear rallies / bull corrections).
+        bypass_regime = (
+            self.signal_name.startswith("crowding_mr_")
+            or self.signal_name.startswith("xsec_mom_")
+            or self.signal_name.startswith("leadlag_btc_")
+        )
         if (
-            not is_mean_reversion
+            not bypass_regime
             and (signals != 0).any()
             and len(df) >= 200
         ):
@@ -376,6 +542,46 @@ def deploy(
                 hold,
             ))
 
+    # ── Cross-sectional momentum ──────────────────────────────────
+    # THE flagship alpha edge. Rank all universe assets by trailing
+    # return; target asset's rank determines long/short. Orthogonal to
+    # single-asset TF by construction — measures RELATIVE, not absolute,
+    # strength. Deploys per (asset, direction, lookback, rebalance).
+    # Only deploys if UNIVERSE_REGISTRY has >= 3 assets.
+    xsec_configs = []
+    if len(UNIVERSE_REGISTRY) >= 3:
+        # (lookback_bars, rebalance_bars, hold_bars)
+        #   168h=7d lookback, rebal every 24h, hold 48h   → medium-term XS mom
+        #   72h=3d  lookback, rebal every 12h, hold 24h   → faster XS mom
+        #   336h=14d lookback, rebal every 48h, hold 96h  → slow quarterly-style
+        xsec_lookback_grid = [(168, 24, 48), (72, 12, 24), (336, 48, 96)]
+        for lb, rb, hold in xsec_lookback_grid:
+            for dir_suffix, direction in (("long", 1), ("short", -1)):
+                xsec_configs.append((
+                    f"xsec_mom_{dir_suffix}_lb{lb}_rb{rb}",
+                    direction,
+                    hold,
+                ))
+
+    # ── BTC lead-lag (alts only) ──────────────────────────────────
+    # When BTC prints a sharp trigger_bars move, alts overshoot in the
+    # next few bars. This is genuine microstructure alpha — retail
+    # attention flow + cross-exchange arb lag. Deploys only on non-BTC
+    # assets.
+    leadlag_configs = []
+    # (trigger_bars, trigger_pct_x10000, hold_bars)
+    #   1h trigger >=1.5%  hold 3h  → fast momentum spillover
+    #   2h trigger >=2.5%  hold 6h  → medium
+    #   4h trigger >=4.0%  hold 12h → slow
+    leadlag_grid = [(1, 150, 3), (2, 250, 6), (4, 400, 12)]
+    for tb, pct_x, hold in leadlag_grid:
+        for dir_suffix, direction in (("long", 1), ("short", -1)):
+            leadlag_configs.append((
+                f"leadlag_btc_{dir_suffix}_t{tb}_p{pct_x}",
+                direction,
+                hold,
+            ))
+
     for asset in sorted(seen_assets):
         for name, direction, hold in tf_configs:
             deployed.append(
@@ -432,6 +638,50 @@ def deploy(
                     deployed_at=now,
                 )
             )
+        for name, direction, hold in xsec_configs:
+            deployed.append(
+                DeployedStrategy(
+                    name=f"sf_xs_{name}_{asset.split('/')[0]}",
+                    asset=asset,
+                    direction=direction,
+                    hold_bars=hold,
+                    signal_name=name,
+                    # Cross-sectional is the flagship orthogonal alpha —
+                    # size equal to TF baseline; the correlation-cluster
+                    # cap will naturally throttle it if it ends up too
+                    # correlated with the TF book, and the dual-window
+                    # VAL + tiered sizing will boost it if it proves
+                    # itself.
+                    position_size_pct=0.010,
+                    stop_loss_atr=2.5,
+                    take_profit_atr=4.0,
+                    oos_pf=1.2,
+                    oos_sharpe=0.5,
+                    grade="B",
+                    deployed_at=now,
+                )
+            )
+        # Lead-lag: only deploy on non-BTC assets
+        if not asset.startswith("BTC"):
+            for name, direction, hold in leadlag_configs:
+                deployed.append(
+                    DeployedStrategy(
+                        name=f"sf_ll_{name}_{asset.split('/')[0]}",
+                        asset=asset,
+                        direction=direction,
+                        hold_bars=hold,
+                        signal_name=name,
+                        # Lead-lag: short hold, higher turnover, so size
+                        # smaller to keep cost drag in check.
+                        position_size_pct=0.008,
+                        stop_loss_atr=1.5,
+                        take_profit_atr=2.5,
+                        oos_pf=1.1,
+                        oos_sharpe=0.3,
+                        grade="B",
+                        deployed_at=now,
+                    )
+                )
 
     # Persist to disk
     config_path = DEPLOY_DIR / "active_strategies.json"
