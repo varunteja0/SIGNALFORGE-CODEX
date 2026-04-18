@@ -470,6 +470,57 @@ def cmd_validate_all(args):
     )
 
 
+def cmd_research(args):
+    """Run the autonomous research loop over cached OHLCV."""
+    import pandas as pd
+    from src.research import Gates, run_auto_loop
+
+    cache_dir = Path(args.cache_dir)
+    symbols = args.symbols
+    tf = args.timeframe
+    all_results: dict = {"symbols": {}, "accepted": []}
+    for sym in symbols:
+        path = cache_dir / f"{sym.replace('/', '_')}_{tf}.parquet"
+        if not path.exists():
+            print(f"  skip {sym}: {path} not found")
+            continue
+        df = pd.read_parquet(path)
+        if args.days:
+            df = df.tail(args.days * (24 if tf == "1h" else 6))
+        print(f"  {sym}: {len(df):,} bars")
+        gates = Gates(
+            min_oos_sharpe=args.min_sharpe,
+            min_frac_positive=args.min_frac_positive,
+            max_drawdown=args.max_dd,
+            min_trades=args.min_trades,
+            min_deflated_sharpe_z=args.min_dsr_z,
+        )
+        result = run_auto_loop(df, n_folds=args.folds, gates=gates)
+        all_results["symbols"][sym] = result.to_dict()
+        for c in result.accepted:
+            all_results["accepted"].append({"symbol": sym, **c.to_dict()})
+        print(f"    {result.n_accepted}/{result.n_candidates} accepted")
+        for c in result.accepted:
+            print(
+                f"      ACCEPT {c.hypothesis.name:24s} sharpe={c.oos_sharpe:+.2f} "
+                f"trades={c.n_trades} dsr_z={c.deflated_sharpe_z:+.2f}"
+            )
+    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+    with open(args.output, "w") as f:
+        json.dump(all_results, f, indent=2, default=str)
+    total = len(all_results["accepted"])
+    print(f"\n{total} total accepted → {args.output}")
+
+
+def cmd_audit_parity(args):
+    """Reconcile paper journal against FillModel (delegates to src.audit.parity CLI)."""
+    import subprocess
+    cmd = [sys.executable, "-m", "src.audit.parity", "--journal", args.journal]
+    if args.output:
+        cmd += ["--output", args.output]
+    sys.exit(subprocess.call(cmd))
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="sf",
@@ -560,6 +611,25 @@ def main():
     p_vall.add_argument("--no-structural", action="store_true",
                         help="Skip funding/OI fetching (faster)")
     p_vall.set_defaults(func=cmd_validate_all)
+
+    # research — autonomous research loop
+    p_res = sub.add_parser("research", parents=[common],
+                            help="Autonomous research loop over cached OHLCV")
+    p_res.add_argument("--cache-dir", default="data/cache")
+    p_res.add_argument("--folds", type=int, default=5)
+    p_res.add_argument("--min-sharpe", type=float, default=0.8)
+    p_res.add_argument("--min-frac-positive", type=float, default=0.6)
+    p_res.add_argument("--max-dd", type=float, default=0.25)
+    p_res.add_argument("--min-dsr-z", type=float, default=1.65)
+    p_res.add_argument("--output", default="fund_data/research_report.json")
+    p_res.set_defaults(func=cmd_research, days=0)
+
+    # audit-parity — live-vs-backtest reconciliation
+    p_aud = sub.add_parser("audit-parity",
+                            help="Reconcile paper journal against FillModel")
+    p_aud.add_argument("--journal", default="fund_data/paper_journal_v20.jsonl")
+    p_aud.add_argument("--output", default=None)
+    p_aud.set_defaults(func=cmd_audit_parity)
 
     args = parser.parse_args()
 
