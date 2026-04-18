@@ -1,0 +1,62 @@
+name: Bug report
+description: Report a defect in SignalForge
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report. Please fill in as much detail as possible.
+
+  - type: input
+    id: commit
+    attributes:
+      label: SignalForge commit / version
+      placeholder: "e.g. c7dc8a7 or v4.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "e.g. 3.11.7"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "e.g. macOS 14.4 / Ubuntu 22.04"
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command that was run
+      render: shell
+      placeholder: "python sf.py validate-all --symbols BTC/USDT ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour (include stack trace / log excerpt)
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Minimal repro, config diffs, screenshots, hypotheses.

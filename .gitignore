@@ -1,3 +1,90 @@
+# ---------------------------------------------------------------------------
+# SignalForge .gitignore
+# Keep the repo lean: source, tests, docs, and canonical config only.
+# Regenerable artifacts (data, logs, sweep outputs) are excluded.
+# ---------------------------------------------------------------------------
+
+# --- Environments --------------------------------------------------------
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+env/
+.python-version
+
+# --- Editors / OS --------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# --- Python --------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# --- Notebooks -----------------------------------------------------------
+notebooks/.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# --- Data & cache (large, regenerable) ----------------------------------
+data/cache/
+data/*.csv
+data/*.parquet
+pipeline_output/
+pipeline_results.json
+
+# --- Fund runtime (DB, ledger, live state, logs) ------------------------
+fund_data/*.db
+fund_data/*.db-shm
+fund_data/*.db-wal
+fund_data/*.log
+fund_data/ledger.json
+fund_data/adaptation_log.json
+fund_data/alert_log.json
+fund_data/live_state.json
+fund_data/test_state.json
+fund_data/portfolio_config.json
+fund_data/market_snapshot.json
+fund_data/health.json
+fund_data/pids/
+fund_data/monitor/
+fund_data/autopsies/
+fund_data/outcome_runs/
+fund_data/deployed_strategies/
+
+# --- Validation / sweep artifacts (output of research runs) -------------
+fund_data/validation_*.json
+fund_data/csfc_*.json
+fund_data/funding_carry_*.json
+fund_data/funding_fade_*.json
+fund_data/outcome_validation_*.json
+
+# --- Evolved strategy outputs (regenerate per run) ----------------------
+evolved_strategies/latest_evolution.json
+test_evolved/latest_evolution.json
+test_fund/ledger.json
+
+# --- Misc logs / scratch -------------------------------------------------
+*.log
+test_output.txt
+test_results*.txt
+e2e_out.txt
+e2e_results.txt
+
+# --- Archive (historical code snapshots, not part of product) -----------
+_archive/
 # Environment
 .env
 .vscode/
