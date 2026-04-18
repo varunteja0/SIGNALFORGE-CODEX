@@ -68,12 +68,13 @@ class FitnessEvaluator:
     def __init__(
         self,
         walk_forward_splits: int = 5,
-        min_trades_per_fold: int = 3,
-        min_total_trades: int = 20,
+        min_trades_per_fold: int = 10,
+        min_total_trades: int = 100,
         commission_pct: float = 0.001,
         slippage_pct: float = 0.0005,
         significance_level: float = 0.05,
         population_size: int = 200,     # For Bonferroni correction
+        n_generations: int = 100,        # For Bonferroni correction
         holding_period: int = 24,        # Bars to hold each position (24h for hourly)
         parsimony_coeff: float = 0.001,  # Penalty per tree node
         max_turnover_pct: float = 0.6,   # Max fraction of bars with positions
@@ -85,6 +86,9 @@ class FitnessEvaluator:
         self.slippage_pct = slippage_pct
         self.significance_level = significance_level
         self.population_size = population_size
+        self.n_generations = n_generations
+        # Total hypotheses = pop × generations (not just pop)
+        self.total_hypotheses = population_size * n_generations
         self.holding_period = holding_period
         self.parsimony_coeff = parsimony_coeff
         self.max_turnover_pct = max_turnover_pct
@@ -116,6 +120,17 @@ class FitnessEvaluator:
         fold_sharpes = []
         in_sample_returns = []
 
+        # Pre-compute signals on FULL dataset once for consistent discretization
+        # Then slice into folds. This prevents distribution shift where the
+        # same tree gets different discretized positions purely because
+        # each fold has different mean/std.
+        try:
+            full_signals = tree.evaluate(df)
+            full_discretized = self._discretize_signals(full_signals)
+        except Exception:
+            result.fitness = -100.0
+            return result
+
         for i in range(self.walk_forward_splits):
             train_end = fold_size * (i + 1)
             test_start = train_end
@@ -127,17 +142,13 @@ class FitnessEvaluator:
             test_df = df.iloc[test_start:test_end].copy()
             train_df = df.iloc[:train_end].copy()
 
-            # Generate signals on test data using the tree
-            try:
-                oos_signals = tree.evaluate(test_df)
-                is_signals = tree.evaluate(train_df)
-            except Exception:
-                result.fitness = -100.0
-                return result
+            # Use pre-computed discretized signals (consistent thresholds)
+            oos_disc = full_discretized.iloc[test_start:test_end]
+            is_disc = full_discretized.iloc[:train_end]
 
             # Compute returns with holding period
-            oos_rets = self._signal_returns(oos_signals, test_df)
-            is_rets = self._signal_returns(is_signals, train_df)
+            oos_rets = self._signal_returns_from_discretized(oos_disc, test_df)
+            is_rets = self._signal_returns_from_discretized(is_disc, train_df)
 
             if len(oos_rets) < self.min_trades_per_fold:
                 continue
@@ -202,9 +213,12 @@ class FitnessEvaluator:
         dd = (equity - peak) / (peak + 1e-10)
         result.oos_max_drawdown = float(abs(dd.min()))
 
-        # Calmar
+        # Calmar — annualize correctly
+        # oos_avg_return is per-TRADE, not per-bar
+        # Trades per year = 8760 / holding_period (for hourly bars)
         if result.oos_max_drawdown > 1e-10:
-            annualized_ret = result.oos_avg_return * 252 * 24
+            trades_per_year = (252 * 24) / self.holding_period
+            annualized_ret = result.oos_avg_return * trades_per_year
             result.oos_calmar = annualized_ret / result.oos_max_drawdown
 
         # Consistency: what fraction of folds had positive Sharpe?
@@ -226,8 +240,9 @@ class FitnessEvaluator:
             t_stat, p_val = stats.ttest_1samp(oos_combined, 0)
             # One-sided test (we want positive returns)
             p_val_one_sided = p_val / 2 if t_stat > 0 else 1.0
-            # Bonferroni correction for multiple hypotheses
-            corrected_p = min(1.0, p_val_one_sided * self.population_size)
+            # Bonferroni correction for ALL hypotheses tested
+            # (population_size × n_generations, not just population_size)
+            corrected_p = min(1.0, p_val_one_sided * self.total_hypotheses)
             result.p_value = float(corrected_p)
             result.is_significant = corrected_p < self.significance_level
 
@@ -241,7 +256,7 @@ class FitnessEvaluator:
             and result.oos_sharpe > 0.5
             and result.oos_profit_factor > 1.0
             and result.oos_avg_return > 0
-            and result.total_trades >= max(10, self.min_total_trades // 2)
+            and result.total_trades >= self.min_total_trades
             and result.consistency >= 0.5
         )
 
@@ -260,23 +275,31 @@ class FitnessEvaluator:
         - Signals that flip frequently
         - Realistic transaction costs on each window
         """
+        # Discretize continuous signals → {-1, 0, +1}
+        discretized = self._discretize_signals(signals)
+        return self._signal_returns_from_discretized(discretized, df)
+
+    def _signal_returns_from_discretized(self, discretized: pd.Series, df: pd.DataFrame) -> pd.Series:
+        """Compute returns from pre-discretized signals.
+
+        Uses non-overlapping holding windows with realistic costs.
+        Entry at NEXT bar open (simulating next-bar entry), not current bar.
+        """
         close = df["close"]
         hp = self.holding_period
         total_cost = 2 * (self.commission_pct + self.slippage_pct)  # entry + exit
 
-        # Discretize continuous signals → {-1, 0, +1}
-        discretized = self._discretize_signals(signals)
-
         trade_returns = []
 
         # Sample non-overlapping windows every `hp` bars
-        for start in range(0, len(df) - hp, hp):
+        # Entry at bar[start+1] to simulate next-bar entry
+        for start in range(0, len(df) - hp - 1, hp):
             sig = discretized.iloc[start]
             if sig == 0:
                 continue  # no position this window
 
-            entry_price = close.iloc[start]
-            exit_price = close.iloc[start + hp]
+            entry_price = close.iloc[start + 1]  # Next-bar entry
+            exit_price = close.iloc[start + 1 + hp]
             if entry_price <= 0:
                 continue
 
@@ -328,7 +351,7 @@ class FitnessEvaluator:
         - High max drawdown
         - Negative average returns (the strategy MUST make money)
         """
-        if r.total_trades < max(10, self.min_total_trades // 2):
+        if r.total_trades < self.min_total_trades:
             return -1.0
 
         score = 0.0

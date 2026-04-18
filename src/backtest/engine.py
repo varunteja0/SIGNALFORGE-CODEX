@@ -63,17 +63,68 @@ class BacktestResult:
 
 
 class Backtester:
-    """Event-driven backtesting engine."""
+    """Event-driven backtesting engine.
+
+    Production-grade backtest with:
+    - Next-bar entry: signal on bar[i], enter at bar[i+1] open
+    - Volatility-scaled slippage (higher during liquidation events)
+    - Funding cost model for perpetual futures
+    - Worst-case intra-bar SL/TP resolution
+    - Frozen ATR for stop distances (not crash-inflated)
+    - Data-driven Sharpe annualization
+    """
+
+    # Warmup bars to skip (features are unreliable before this)
+    WARMUP_BARS = 200
 
     def __init__(
         self,
         initial_capital: float = 10000,
         commission_pct: float = 0.001,
         slippage_pct: float = 0.0005,
+        funding_rate_col: str = "fund_funding_rate",
+        funding_interval_bars: int = 8,  # funding every 8h for 1h bars
     ):
         self.initial_capital = initial_capital
         self.commission_pct = commission_pct
         self.slippage_pct = slippage_pct
+        self.funding_rate_col = funding_rate_col
+        self.funding_interval_bars = funding_interval_bars
+
+    def _compute_slippage(self, price: float, bar: pd.Series) -> float:
+        """Volatility-scaled slippage. Higher during liquidation events.
+
+        Base: self.slippage_pct (5 bps)
+        Scaled by: sqrt(ATR_ratio) * log(volume_spike)
+        Floor: base slippage (never below)
+        Cap: 10x base (50 bps)
+        """
+        atr_ratio = bar.get("atr_ratio", 1.0) if hasattr(bar, 'get') else 1.0
+        vol_spike = bar.get("volume_ratio", 1.0) if hasattr(bar, 'get') else 1.0
+
+        # Ensure sane values
+        atr_ratio = max(1.0, float(atr_ratio)) if not np.isnan(atr_ratio) else 1.0
+        vol_spike = max(1.0, float(vol_spike)) if not np.isnan(vol_spike) else 1.0
+
+        multiplier = max(1.0, np.sqrt(atr_ratio) * np.log1p(vol_spike))
+        multiplier = min(multiplier, 10.0)  # Cap at 10x base = 50 bps
+
+        return price * self.slippage_pct * multiplier
+
+    def _compute_funding_cost(
+        self, bar: pd.Series, direction: int, notional: float
+    ) -> float:
+        """Compute funding cost for holding through a funding interval.
+
+        Perpetual futures charge funding every 8 hours.
+        If you're long and funding is positive, you pay.
+        If you're short and funding is positive, you receive.
+        """
+        rate = bar.get(self.funding_rate_col, 0.0) if hasattr(bar, 'get') else 0.0
+        if np.isnan(rate):
+            rate = 0.0
+        # Long pays positive funding, short receives it
+        return notional * rate * direction
 
     def run(
         self,
@@ -84,7 +135,11 @@ class Backtester:
         take_profit_atr: float = 3.0,
         max_holding_bars: int = 50,
     ) -> BacktestResult:
-        """Run a full backtest with realistic execution."""
+        """Run a full backtest with realistic execution.
+
+        CRITICAL: Signals are computed on bar[i], but entry happens at
+        bar[i+1]'s open price. This eliminates lookahead bias.
+        """
         signals = signal_func(df)
         capital = self.initial_capital
         position = None
@@ -94,22 +149,34 @@ class Backtester:
 
         atr_col = "atr_14" if "atr_14" in df.columns else None
 
+        # Track pending signal from previous bar for next-bar entry
+        pending_signal = 0
+        entry_atr = 0.0  # Frozen ATR at entry time
+
         for i in range(1, len(df)):
             bar = df.iloc[i]
             prev_bar = df.iloc[i - 1]
-            signal = signals.iloc[i]
+
+            # Signal from PREVIOUS bar (next-bar entry rule)
+            # Skip warmup period where features are unreliable
+            if i > 1 and (i - 1) >= self.WARMUP_BARS:
+                pending_signal = signals.iloc[i - 1]
+            else:
+                pending_signal = 0
 
             # Check if we need to close existing position
             if position is not None:
                 close_reason = None
                 exit_price = bar["close"]
 
-                # Stop loss
-                if atr_col and atr_col in df.columns:
-                    atr = df[atr_col].iloc[i]
+                # Use FROZEN ATR from entry, not current bar's ATR
+                # Current ATR inflates during crashes, widening stops
+                # exactly when they should tighten
+                if atr_col and atr_col in df.columns and entry_atr > 0:
                     if position.direction == 1:
-                        stop = position.entry_price - stop_loss_atr * atr
-                        tp = position.entry_price + take_profit_atr * atr
+                        stop = position.entry_price - stop_loss_atr * entry_atr
+                        tp = position.entry_price + take_profit_atr * entry_atr
+                        # SL checked first (worst-case assumption)
                         if bar["low"] <= stop:
                             exit_price = stop
                             close_reason = "stop_loss"
@@ -117,8 +184,8 @@ class Backtester:
                             exit_price = tp
                             close_reason = "take_profit"
                     else:
-                        stop = position.entry_price + stop_loss_atr * atr
-                        tp = position.entry_price - take_profit_atr * atr
+                        stop = position.entry_price + stop_loss_atr * entry_atr
+                        tp = position.entry_price - take_profit_atr * entry_atr
                         if bar["high"] >= stop:
                             exit_price = stop
                             close_reason = "stop_loss"
@@ -131,13 +198,21 @@ class Backtester:
                 if bars_held >= max_holding_bars and close_reason is None:
                     close_reason = "max_hold"
 
-                # Opposite signal
-                if signal != 0 and signal != position.direction and close_reason is None:
+                # Opposite signal (from previous bar)
+                if pending_signal != 0 and pending_signal != position.direction and close_reason is None:
                     close_reason = "reverse_signal"
 
+                # Funding cost (applied every funding_interval_bars)
+                if bars_held > 0 and bars_held % self.funding_interval_bars == 0:
+                    notional = position.entry_price * position.size
+                    funding_cost = self._compute_funding_cost(
+                        bar, position.direction, notional
+                    )
+                    capital -= funding_cost
+
                 if close_reason:
-                    # Apply slippage
-                    slip = exit_price * self.slippage_pct
+                    # Apply volatility-scaled slippage
+                    slip = self._compute_slippage(exit_price, bar)
                     if position.direction == 1:
                         exit_price -= slip
                     else:
@@ -161,27 +236,45 @@ class Backtester:
                     trades.append(position)
                     position = None
 
-            # Open new position
-            if signal != 0 and position is None and capital > 0:
-                entry_price = bar["close"]
+            # Open new position at THIS bar's open (signal was from previous bar)
+            if pending_signal != 0 and position is None and capital > 0:
+                # Entry at current bar's OPEN, not close (next-bar entry rule)
+                entry_price = bar["open"]
                 
-                # Apply slippage
-                slip = entry_price * self.slippage_pct
-                if signal == 1:
+                # Apply volatility-scaled slippage
+                slip = self._compute_slippage(entry_price, bar)
+                if pending_signal == 1:
                     entry_price += slip
                 else:
                     entry_price -= slip
 
-                # Position sizing
+                # Position sizing: risk-to-stop, not fixed notional
+                # size = risk_capital / risk_per_unit (distance to stop)
                 risk_capital = capital * position_size_pct
-                size = risk_capital / entry_price
+                if atr_col and atr_col in df.columns:
+                    current_atr = df[atr_col].iloc[i]
+                    if not np.isnan(current_atr) and current_atr > 0:
+                        risk_per_unit = stop_loss_atr * current_atr
+                        size = risk_capital / risk_per_unit
+                        entry_atr = current_atr  # Freeze ATR at entry
+                    else:
+                        size = risk_capital / entry_price
+                        entry_atr = entry_price * 0.02  # Fallback 2%
+                else:
+                    size = risk_capital / entry_price
+                    entry_atr = entry_price * 0.02
+
+                # Cap size by max notional (20% of capital)
+                max_size = (capital * 0.20) / entry_price
+                size = min(size, max_size)
+
                 commission = entry_price * size * self.commission_pct
 
                 position = Trade(
                     entry_time=df.index[i],
                     exit_time=None,
                     symbol="",
-                    direction=signal,
+                    direction=pending_signal,
                     entry_price=entry_price,
                     size=size,
                     commission=commission,
@@ -236,17 +329,27 @@ class Backtester:
         if days > 0:
             result.annualized_return = (1 + result.total_return) ** (365 / days) - 1
 
-        # Sharpe
+        # Sharpe — data-driven annualization
+        # Infer bar frequency from data instead of hardcoding
+        if len(eq) > 2:
+            median_delta = pd.Series(eq.index).diff().dropna().median()
+            if hasattr(median_delta, 'total_seconds'):
+                bars_per_year = 365.25 * 24 * 3600 / max(median_delta.total_seconds(), 1)
+            else:
+                bars_per_year = 252 * 24  # Fallback: hourly
+        else:
+            bars_per_year = 252 * 24
+
         if len(eq_returns) > 1 and eq_returns.std() > 0:
             result.sharpe_ratio = (
-                eq_returns.mean() / eq_returns.std() * np.sqrt(252 * 24)
+                eq_returns.mean() / eq_returns.std() * np.sqrt(bars_per_year)
             )
 
         # Sortino
         downside = eq_returns[eq_returns < 0]
         if len(downside) > 0 and downside.std() > 0:
             result.sortino_ratio = (
-                eq_returns.mean() / downside.std() * np.sqrt(252 * 24)
+                eq_returns.mean() / downside.std() * np.sqrt(bars_per_year)
             )
 
         # Drawdown
@@ -444,7 +547,12 @@ class Backtester:
 
         for i in range(1, len(df)):
             bar = df.iloc[i]
-            signal = signals.iloc[i]
+
+            # Signal from PREVIOUS bar (next-bar entry rule)
+            if i > 1 and (i - 1) >= self.WARMUP_BARS:
+                signal = signals.iloc[i - 1]
+            else:
+                signal = 0
 
             if position is not None:
                 close_reason = None
@@ -566,10 +674,10 @@ class Backtester:
                     remaining_pct = 1.0
                     partial_pnl = 0.0
 
-            # Open new position
+            # Open new position at current bar's OPEN (signal from previous bar)
             if signal != 0 and position is None and capital > 0:
-                entry_price = bar["close"]
-                slip = entry_price * self.slippage_pct
+                entry_price = bar["open"]
+                slip = self._compute_slippage(entry_price, bar)
                 if signal == 1:
                     entry_price += slip
                 else:

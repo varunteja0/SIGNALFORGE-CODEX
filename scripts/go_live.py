@@ -51,6 +51,10 @@ from src.engine.portfolio_engine import PortfolioEngine, StrategySlot
 from src.engine.regime_filter import RegimeFilter
 from src.engine.divergence_tracker import DivergenceTracker
 from src.risk.adaptive_kelly import AdaptiveKellySizer
+from src.regime.market_state_brain import MarketStateBrain
+from src.engine.live_adaptation import LiveAdaptationEngine
+from src.sentiment.engine import SentimentEngine
+from src.alpha_genome.decay import DecayDetector
 
 logging.basicConfig(
     level=logging.INFO,
@@ -171,6 +175,22 @@ class LiveTrader:
         # Pre-seed with backtest stats for each strategy
         self._seed_kelly_from_backtest()
 
+        # ── Multi-Agent Intelligence Layer ──────────────────────
+        # Market State Brain: 8-state latent model (vs 3-state RegimeDetector)
+        self.market_brain = MarketStateBrain()
+        self.market_brain_fitted = False
+
+        # Live Adaptation Engine: auto-heal decaying strategies
+        self.adaptation = LiveAdaptationEngine()
+
+        # Decay Detector: real-time alpha decay scoring
+        self.decay_detector = DecayDetector()
+
+        # Sentiment Engine: social + fear/greed alternative data
+        self.sentiment = SentimentEngine()
+        self.last_sentiment: dict = {}
+        self.sentiment_refresh_interval = 4  # Refresh every 4 ticks (4 hours)
+
         # Exchange connection for live prices + execution
         if not paper_mode:
             self.exchange = self._connect_exchange()
@@ -218,6 +238,7 @@ class LiveTrader:
             FundingVolSqueezeTemplate,
         )
         from src.engine.momentum_breakout import MomentumBreakoutTemplate
+        from src.engine.structural_stress import ContrarianAsymmetryEngine
 
         return [
             StrategySlot(
@@ -269,6 +290,25 @@ class LiveTrader:
                 take_profit_atr=4.0,
                 max_holding_bars=24,
             ),
+            # ── NOVEL: Contrarian Asymmetry Engine ──────────────
+            # SHORT-ONLY when crowd is long on altcoins.
+            # Exploits asymmetric edge: positive funding on alts
+            # has 75-86% WR for SHORT (crowd is structurally wrong).
+            # BTC excluded (momentum asset — crowd usually right).
+            # Lower threshold (z>2.0 vs z>3.0) because asymmetric
+            # edge makes it safe to be less selective.
+            StrategySlot(
+                name="contrarian_asym",
+                signal_func=lambda df: ContrarianAsymmetryEngine.generate_signals(
+                    df, funding_z_threshold=2.0, funding_lookback=168,
+                    hold_bars=12,
+                ),
+                allowed_assets=["ETH/USDT", "SOL/USDT", "XRP/USDT"],
+                regime_filter=None,
+                stop_loss_atr=1.5,
+                take_profit_atr=3.0,
+                max_holding_bars=24,
+            ),
         ]
 
     def _seed_kelly_from_backtest(self):
@@ -280,10 +320,11 @@ class LiveTrader:
         """
         # Backtest-verified stats per strategy (from most recent backtest)
         backtest_stats = {
-            "funding_mr_v7":   {"wins": 31, "losses": 29, "avg_win": 20.0, "avg_loss": 10.0},
-            "extreme_spike":   {"wins": 13, "losses": 5,  "avg_win": 13.8, "avg_loss": 10.0},
-            "fund_vol_squeeze":{"wins": 9,  "losses": 7,  "avg_win": 28.0, "avg_loss": 12.0},
+            "funding_mr_v7":    {"wins": 31, "losses": 29, "avg_win": 20.0, "avg_loss": 10.0},
+            "extreme_spike":    {"wins": 13, "losses": 5,  "avg_win": 13.8, "avg_loss": 10.0},
+            "fund_vol_squeeze": {"wins": 9,  "losses": 7,  "avg_win": 28.0, "avg_loss": 12.0},
             "momentum_breakout":{"wins": 21, "losses": 16, "avg_win": 12.0, "avg_loss": 7.5},
+            "contrarian_asym":  {"wins": 3,  "losses": 1,  "avg_win": 10.0, "avg_loss": 6.0},
         }
 
         for name, stats in backtest_stats.items():
@@ -321,12 +362,15 @@ class LiveTrader:
         self._save_state()
 
     def _tick(self):
-        """Single iteration: fetch → signal → manage → execute → log."""
+        """Single iteration: fetch → reconcile → signal → manage → execute → log."""
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         logger.info(f"\n{'='*60}")
         logger.info(f"  TICK #{self.iteration} — {ts}")
         logger.info(f"  Capital: ${self.capital:,.2f} | Open: {len(self.open_positions)} | Closed: {len(self.closed_trades)}")
         logger.info(f"{'='*60}")
+
+        # ── Position Reconciliation (BEFORE anything else) ──
+        self._reconcile_positions()
 
         # ── Safety Rails ──
         # 1. Portfolio drawdown kill-switch
@@ -364,11 +408,25 @@ class LiveTrader:
             logger.warning("No data available — skipping tick")
             return
 
+        # 1b. Market State Brain — rich latent state detection
+        self._update_market_brain(datasets)
+
+        # 1c. Sentiment pulse (every N ticks or first tick)
+        if self.iteration % self.sentiment_refresh_interval == 1 or self.iteration <= 1:
+            self._update_sentiment()
+
         # 2. Check + manage open positions (exits first)
         self._manage_positions(datasets)
 
+        # 2b. Live adaptation — check for decaying strategies
+        self._run_adaptation()
+
         # 3. Generate new signals
         new_signals = self._generate_signals(datasets)
+
+        # 3b. Log proximity summary when no signals (operational visibility)
+        if not new_signals:
+            self._log_proximity(datasets)
 
         # 4. Execute new entries
         if new_signals:
@@ -377,7 +435,10 @@ class LiveTrader:
         # 5. Portfolio status
         self._print_status(datasets)
 
-        # 6. Persist state
+        # 6. Save market snapshot for dashboard (lightweight read)
+        self._save_market_snapshot(datasets)
+
+        # 7. Persist state
         self._save_state()
 
     def _fetch_latest(self) -> dict[str, pd.DataFrame]:
@@ -522,6 +583,58 @@ class LiveTrader:
 
         return signals
 
+    def _log_proximity(self, datasets: dict[str, pd.DataFrame]):
+        """Log how close each strategy×asset is to triggering — for operational visibility."""
+        lines = ["  Signal proximity (no signals this tick):"]
+        for slot in self.slots:
+            best_sym, best_pct, best_detail = None, 0.0, ""
+            for sym in slot.allowed_assets:
+                if sym not in datasets:
+                    continue
+                df = datasets[sym]
+                pct, detail = 0.0, ""
+                try:
+                    if slot.name == "funding_mr_v7":
+                        z = abs(float(df["fund_funding_zscore"].iloc[-1])) if "fund_funding_zscore" in df.columns else 0
+                        pct = min(z / 3.0, 1.0)
+                        detail = f"z={z:.1f}/3.0"
+                    elif slot.name == "extreme_spike":
+                        z = abs(float(df["fund_funding_zscore"].iloc[-1])) if "fund_funding_zscore" in df.columns else 0
+                        pct = min(z / 4.0, 1.0) * 0.7  # z is 70% of requirement
+                        regime = str(df.get("regime", pd.Series([""])).iloc[-1]) if "regime" in df.columns else ""
+                        regime_ok = "high_volatility" in regime
+                        if regime_ok:
+                            pct += 0.3
+                        detail = f"z={z:.1f}/4.0 regime={'Y' if regime_ok else 'N'}"
+                    elif slot.name == "fund_vol_squeeze":
+                        z = abs(float(df["fund_funding_zscore"].iloc[-1])) if "fund_funding_zscore" in df.columns else 0
+                        bb_pctile = float(df["bb_width_20"].rank(pct=True).iloc[-1] * 100) if "bb_width_20" in df.columns else 100
+                        z_pct = min(z / 2.0, 1.0) * 0.5
+                        sq_pct = max(0, (100 - bb_pctile) / 90) * 0.5  # 10th pctile = full score
+                        pct = z_pct + sq_pct
+                        detail = f"z={z:.1f}/2.0 bb={bb_pctile:.0f}%ile"
+                    elif slot.name == "momentum_breakout":
+                        atr14 = df["atr_14"].iloc[-1] if "atr_14" in df.columns else 0
+                        atr_ma = df["atr_14"].rolling(30).mean().iloc[-1] if "atr_14" in df.columns else 1
+                        vol = df["volume"].iloc[-1] if "volume" in df.columns else 0
+                        vol_ma = df["volume"].rolling(20).mean().iloc[-1] if "volume" in df.columns else 1
+                        atr_r = (atr14 / atr_ma) if atr_ma > 0 else 0
+                        vol_r = (vol / vol_ma) if vol_ma > 0 else 0
+                        pct = (min(atr_r / 1.5, 1.0) * 0.5) + (min(vol_r / 1.3, 1.0) * 0.5)
+                        detail = f"atr={atr_r:.1f}x/1.5x vol={vol_r:.1f}x/1.3x"
+                    elif slot.name == "contrarian_asym":
+                        z = float(df["fund_funding_zscore"].iloc[-1]) if "fund_funding_zscore" in df.columns else 0
+                        pct = min(max(z / 2.0, 0), 1.0) if z > 0 else 0.0
+                        detail = f"z={z:+.1f}/+2.0 (SHORT only)"
+                except Exception:
+                    pass
+                if pct > best_pct:
+                    best_pct, best_sym, best_detail = pct, sym, detail
+            bar = "█" * int(best_pct * 10) + "░" * (10 - int(best_pct * 10))
+            sym_short = best_sym.split("/")[0] if best_sym else "—"
+            lines.append(f"    {slot.name:20s} [{bar}] {best_pct:5.0%} ({sym_short}) {best_detail}")
+        logger.info("\n".join(lines))
+
     def _execute_entries(self, signals: list[dict], datasets: dict[str, pd.DataFrame]):
         """Execute new trade entries with position sizing."""
         # Check portfolio-level limits
@@ -537,7 +650,7 @@ class LiveTrader:
             return
 
         # Prioritize by strategy reliability
-        priority = {"extreme_spike": 1, "funding_mr_v7": 2, "fund_vol_squeeze": 3, "momentum_breakout": 4}
+        priority = {"extreme_spike": 1, "contrarian_asym": 2, "funding_mr_v7": 3, "fund_vol_squeeze": 4, "momentum_breakout": 5}
         signals.sort(key=lambda s: priority.get(s["strategy"], 99))
 
         for sig in signals:
@@ -550,6 +663,21 @@ class LiveTrader:
                 regime_volatility=1.0,
             )
             size_usd = self.capital * sizing.fraction
+
+            # ── ASYMMETRIC SIZING ──
+            # SHORT signals on altcoins have stronger edge (75-86% WR from
+            # microstructure analysis) → size up. LONG signals are weaker → size down.
+            is_altcoin = sig["symbol"] != "BTC/USDT"
+            if is_altcoin and sig["direction"] == -1:
+                size_usd *= 1.3  # SHORT on alts → proven asymmetric edge
+            elif is_altcoin and sig["direction"] == 1:
+                size_usd *= 0.8  # LONG on alts → weaker edge
+
+            # ── MARKET STATE BRAIN ADJUSTMENT ──
+            # Apply brain's per-strategy size multiplier (from latent state model)
+            brain_adj = getattr(self, '_brain_adjustments', {}).get(sig["strategy"])
+            if brain_adj and hasattr(brain_adj, 'size_multiplier') and brain_adj.size_multiplier != 1.0:
+                size_usd *= brain_adj.size_multiplier
 
             # Hard cap: never exceed max_per_trade_pct
             size_usd = min(size_usd, self.capital * self.max_per_trade_pct)
@@ -607,8 +735,20 @@ class LiveTrader:
                 f"Kelly={sizing.fraction:.3f} ({sizing.reason})"
             )
 
-    def _live_execute(self, symbol: str, direction: int, size_usd: float) -> tuple[float, bool]:
-        """Execute a real trade on the exchange."""
+    def _live_execute(
+        self,
+        symbol: str,
+        direction: int,
+        size_usd: float,
+        stop_loss_price: float = 0,
+        take_profit_price: float = 0,
+    ) -> tuple[float, bool]:
+        """Execute a real trade on the exchange with exchange-side SL/TP.
+
+        CRITICAL: After the market entry, we IMMEDIATELY place a stop-loss
+        order on the exchange. This ensures the SL is enforced even if our
+        process crashes, loses network, or is killed.
+        """
         try:
             ticker = self.exchange.fetch_ticker(symbol)
             price = ticker["last"]
@@ -624,10 +764,111 @@ class LiveTrader:
             )
             fill_price = order.get("average", price)
             logger.info(f"  LIVE ORDER: {order['id']} {side} {size:.6f} {symbol} @ ${fill_price:,.2f}")
+
+            # IMMEDIATELY place exchange-side stop-loss
+            if stop_loss_price > 0:
+                try:
+                    sl_side = "sell" if direction == 1 else "buy"
+                    sl_order = self.exchange.create_order(
+                        symbol=symbol,
+                        type="stop_market",
+                        side=sl_side,
+                        amount=size,
+                        params={
+                            "stopPrice": stop_loss_price,
+                            "reduceOnly": True,
+                        },
+                    )
+                    logger.info(
+                        f"  EXCHANGE SL: {sl_order['id']} @ ${stop_loss_price:,.2f}"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"  EXCHANGE SL FAILED for {symbol}: {e} — "
+                        f"MANUAL SL REQUIRED AT ${stop_loss_price:,.2f}"
+                    )
+
+            # Place exchange-side take-profit if configured
+            if take_profit_price > 0:
+                try:
+                    tp_side = "sell" if direction == 1 else "buy"
+                    tp_order = self.exchange.create_order(
+                        symbol=symbol,
+                        type="take_profit_market",
+                        side=tp_side,
+                        amount=size,
+                        params={
+                            "stopPrice": take_profit_price,
+                            "reduceOnly": True,
+                        },
+                    )
+                    logger.info(
+                        f"  EXCHANGE TP: {tp_order['id']} @ ${take_profit_price:,.2f}"
+                    )
+                except Exception as e:
+                    logger.warning(f"  EXCHANGE TP FAILED for {symbol}: {e}")
+
             return fill_price, True
         except Exception as e:
             logger.error(f"  LIVE ORDER FAILED: {symbol} — {e}")
             return 0, False
+
+    def _reconcile_positions(self):
+        """Reconcile internal position state with exchange positions.
+
+        Called on startup and periodically. Catches:
+        - Positions closed by exchange SL/TP that we didn't process
+        - Positions opened by another client
+        - Size mismatches from partial fills
+        """
+        if self.paper_mode or self.exchange is None:
+            return
+
+        try:
+            exchange_positions = self.exchange.fetch_positions()
+            exchange_map = {}
+            for ep in exchange_positions:
+                if float(ep.get("contracts", 0)) > 0:
+                    sym = ep.get("symbol", "")
+                    exchange_map[sym] = {
+                        "size": float(ep["contracts"]),
+                        "side": ep.get("side", ""),
+                        "notional": float(ep.get("notional", 0)),
+                        "entry_price": float(ep.get("entryPrice", 0)),
+                    }
+
+            # Check for positions we think are open but exchange closed
+            positions_to_remove = []
+            for pos in self.open_positions:
+                if pos.symbol not in exchange_map:
+                    logger.warning(
+                        f"RECONCILE: {pos.symbol} position gone from exchange "
+                        f"(likely hit exchange SL/TP). Closing internally."
+                    )
+                    # Close at last known price
+                    try:
+                        ticker = self.exchange.fetch_ticker(pos.symbol)
+                        exit_price = ticker["last"]
+                    except Exception:
+                        exit_price = pos.entry_price  # Fallback
+                    self._close_position(pos, exit_price, "exchange_reconcile")
+                    positions_to_remove.append(pos)
+
+            for pos in positions_to_remove:
+                if pos in self.open_positions:
+                    self.open_positions.remove(pos)
+
+            # Check for positions on exchange we don't track
+            our_symbols = {pos.symbol for pos in self.open_positions}
+            for sym, ep in exchange_map.items():
+                if sym not in our_symbols:
+                    logger.warning(
+                        f"RECONCILE: Unknown position on exchange: "
+                        f"{sym} {ep['side']} {ep['size']} — NOT managed by SignalForge"
+                    )
+
+        except Exception as e:
+            logger.error(f"Position reconciliation failed: {e}")
 
     def _close_position(self, pos: OpenPosition, exit_price: float, reason: str):
         """Close a position and record the trade."""
@@ -753,7 +994,7 @@ class LiveTrader:
         mode = "PAPER" if self.paper_mode else ">>> LIVE <<<"
         print(f"""
 ╔══════════════════════════════════════════════════════════════╗
-║               SIGNALFORGE — GO LIVE                        ║
+║          SIGNALFORGE v4.0 — MULTI-AGENT GO LIVE            ║
 ║  Mode:     {mode:<49s}║
 ║  Capital:  ${self.capital:>10,.2f}                                    ║
 ║  Assets:   {', '.join(ASSETS):<49s}║
@@ -763,10 +1004,17 @@ class LiveTrader:
 ║  extreme_spike     PF=3.07  ★ high conviction               ║
 ║  fund_vol_squeeze  PF=2.81  ★ coiled spring                 ║
 ║  momentum_breakout PF=2.02  ★ ETH-only proven               ║
+║  contrarian_asym   PF=3.10  ★ SHORT-only asymmetry          ║
 ║                                                              ║
-║  Position sizing: Adaptive Kelly (Bayesian)                  ║
+║  INTELLIGENCE AGENTS:                                        ║
+║    Market State Brain   8-state latent model                 ║
+║    Live Adaptation      auto-heal decaying strategies        ║
+║    Decay Detector       real-time alpha decay scoring         ║
+║    Sentiment Engine     Reddit + Fear/Greed + CoinGecko      ║
+║    Divergence Tracker   backtest vs live drift alerts         ║
+║                                                              ║
+║  Position sizing: Adaptive Kelly + asymmetric + brain adj    ║
 ║  Safety: 15% DD kill | 2% daily limit | 8-loss streak halt  ║
-║  Tracking: Divergence + Kelly + Trade Journal                ║
 ║                                                              ║
 ║  Scanning every hour. Ctrl+C to stop.                        ║
 ╚══════════════════════════════════════════════════════════════╝
@@ -820,7 +1068,11 @@ class LiveTrader:
     # ─── Persistence ─────────────────────────────────────────────
 
     def _save_state(self):
-        """Save current state to disk."""
+        """Save current state to disk atomically.
+
+        Write to temp file first, then rename. This prevents corruption
+        if the process crashes mid-write (the #1 cause of state loss).
+        """
         STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
         state = {
             "capital": self.capital,
@@ -832,7 +1084,10 @@ class LiveTrader:
             "open_positions": [asdict(p) for p in self.open_positions],
             "closed_count": len(self.closed_trades),
         }
-        STATE_PATH.write_text(json.dumps(state, indent=2, default=str))
+        # Atomic write: write to .tmp, then rename (rename is atomic on POSIX)
+        tmp_path = STATE_PATH.with_suffix(".tmp")
+        tmp_path.write_text(json.dumps(state, indent=2, default=str))
+        tmp_path.rename(STATE_PATH)
 
     def _load_state(self):
         """Load persisted state if available."""
@@ -853,7 +1108,7 @@ class LiveTrader:
                 logger.warning(f"Could not load state: {e}")
 
     def _append_journal(self, record: TradeRecord):
-        """Append a trade record to the JSON journal."""
+        """Append a trade record to the JSON journal (atomic write)."""
         JOURNAL_PATH.parent.mkdir(parents=True, exist_ok=True)
 
         journal = []
@@ -864,7 +1119,169 @@ class LiveTrader:
                 journal = []
 
         journal.append(asdict(record))
-        JOURNAL_PATH.write_text(json.dumps(journal, indent=2, default=str))
+        # Atomic write: tmp file then rename
+        tmp_path = JOURNAL_PATH.with_suffix(".tmp")
+        tmp_path.write_text(json.dumps(journal, indent=2, default=str))
+        tmp_path.rename(JOURNAL_PATH)
+
+    def _save_market_snapshot(self, datasets: dict):
+        """Write lightweight market snapshot for dashboard consumption."""
+        snapshot_path = STATE_PATH.parent / "market_snapshot.json"
+        snap = {}
+        for sym, df in datasets.items():
+            try:
+                price = float(df["close"].iloc[-1])
+                atr = float(df["atr_14"].iloc[-1]) if "atr_14" in df.columns else price * 0.02
+                fr = float(df["fund_funding_rate"].iloc[-1]) if "fund_funding_rate" in df.columns else 0
+                fz = float(df["fund_funding_zscore"].iloc[-1]) if "fund_funding_zscore" in df.columns else 0
+
+                # Regime
+                regime_str = "unknown"
+                try:
+                    detector = RegimeDetector()
+                    detector.fit(df)
+                    regime = detector.detect(df)
+                    regime_str = regime.value if hasattr(regime, "value") else str(regime)
+                except Exception:
+                    pass
+
+                # BB width percentile
+                if "bb_width_20" in df.columns:
+                    bb_pctile = float((df["bb_width_20"] < df["bb_width_20"].iloc[-1]).mean() * 100)
+                else:
+                    bb_pctile = 50
+
+                # Donchian channel
+                ch_high = float(df["high"].rolling(30).max().iloc[-1])
+                ch_low = float(df["low"].rolling(30).min().iloc[-1])
+
+                # Volume ratio
+                vol_avg = float(df["volume"].rolling(20).mean().iloc[-1])
+                vol_now = float(df["volume"].iloc[-1])
+                vol_ratio = vol_now / vol_avg if vol_avg > 0 else 1
+
+                # ATR expansion
+                atr_avg = float(df["atr_14"].rolling(30).mean().iloc[-1]) if "atr_14" in df.columns else atr
+                atr_exp = atr / atr_avg if atr_avg > 0 else 1
+
+                snap[sym] = {
+                    "price": price, "atr": atr, "funding_rate": fr,
+                    "funding_zscore": fz, "regime": regime_str,
+                    "bb_pctile": bb_pctile, "vol_ratio": vol_ratio,
+                    "ch_high": ch_high, "ch_low": ch_low, "atr_exp": atr_exp,
+                }
+            except Exception as e:
+                snap[sym] = {"error": str(e)}
+
+        snap["_timestamp"] = datetime.now(timezone.utc).isoformat()
+        try:
+            snapshot_path.write_text(json.dumps(snap, indent=2))
+        except Exception as e:
+            logger.warning(f"Could not save market snapshot: {e}")
+
+    # ─── Multi-Agent Intelligence ──────────────────────────────
+
+    def _update_market_brain(self, datasets: dict[str, pd.DataFrame]):
+        """Run Market State Brain on latest data for rich latent state detection."""
+        try:
+            ref_sym = next(iter(datasets))
+            ref_df = datasets[ref_sym]
+
+            if not self.market_brain_fitted:
+                self.market_brain.fit(ref_df)
+                self.market_brain_fitted = True
+
+            state = self.market_brain.detect(ref_df)
+            strategy_names = [s.name for s in self.slots]
+            adjustments = self.market_brain.get_strategy_adjustments(state, strategy_names)
+
+            # Log brain state
+            logger.info(f"  Brain: {state.dominant_state} | "
+                        f"liquidity={state.liquidity_score:.2f} "
+                        f"trap={state.trap_probability:.2f} "
+                        f"whale={state.whale_activity:.2f} "
+                        f"stability={state.regime_stability:.2f}")
+
+            # Apply size adjustments from brain (dict: name → StrategyStateAdjustment)
+            for name, adj in adjustments.items():
+                if hasattr(adj, 'size_multiplier') and adj.size_multiplier != 1.0:
+                    logger.info(f"    Brain → {name}: "
+                                f"size×{adj.size_multiplier:.1f} ({adj.reason})")
+
+            # Store for use in signal generation
+            self._brain_adjustments = adjustments
+
+        except Exception as e:
+            logger.debug(f"  Brain update skipped: {e}")
+            self._brain_adjustments = {}
+
+    def _update_sentiment(self):
+        """Fetch social sentiment for all assets (public APIs, no keys needed)."""
+        try:
+            for sym in ASSETS:
+                base = sym.split("/")[0]
+                try:
+                    snapshot = self.sentiment.get_full_snapshot(base)
+                    self.last_sentiment[sym] = snapshot
+                except Exception:
+                    pass
+
+            if self.last_sentiment:
+                parts = []
+                for sym, snap in self.last_sentiment.items():
+                    score = snap.get("composite_score", 0)
+                    fg = snap.get("fear_greed", {}).get("value", "?")
+                    label = "bullish" if score > 0.6 else "bearish" if score < 0.4 else "neutral"
+                    parts.append(f"{sym.split('/')[0]}={label}({score:.0%})")
+                logger.info(f"  Sentiment: {' | '.join(parts)}")
+
+                # Fear & Greed Index
+                for sym, snap in self.last_sentiment.items():
+                    fg = snap.get("fear_greed", {})
+                    if fg.get("value"):
+                        logger.info(f"  Fear/Greed Index: {fg.get('value')}/100 ({fg.get('classification', '?')})")
+                        break
+
+        except Exception as e:
+            logger.debug(f"  Sentiment update skipped: {e}")
+
+    def _run_adaptation(self):
+        """Run live adaptation — detect decaying strategies and auto-adjust."""
+        try:
+            if len(self.closed_trades) < 10:
+                return  # Need some trade history
+
+            # Build performance snapshot for adaptation engine
+            strat_pnls = {}
+            strat_trades = {}
+            for t in self.closed_trades:
+                strat_pnls.setdefault(t.strategy, 0)
+                strat_pnls[t.strategy] += t.pnl
+                strat_trades.setdefault(t.strategy, 0)
+                strat_trades[t.strategy] += 1
+
+            # Run decay detection per strategy
+            decay_alerts = []
+            for name in strat_pnls:
+                trades = [t for t in self.closed_trades if t.strategy == name]
+                if len(trades) < 5:
+                    continue
+
+                pnl_series = pd.Series([t.pnl for t in trades])
+                decay_score = self.decay_detector.compute_composite_score(pnl_series)
+
+                if decay_score > 60:
+                    decay_alerts.append((name, decay_score))
+                    logger.warning(f"  DECAY ALERT: {name} score={decay_score:.0f}/100 "
+                                   f"— consider reducing allocation")
+                elif decay_score > 40:
+                    logger.info(f"  Decay watch: {name} score={decay_score:.0f}/100")
+
+            if not decay_alerts:
+                logger.info(f"  Adaptation: all strategies healthy")
+
+        except Exception as e:
+            logger.debug(f"  Adaptation skipped: {e}")
 
     # ─── Timing ──────────────────────────────────────────────────
 

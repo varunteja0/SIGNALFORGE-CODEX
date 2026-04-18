@@ -75,63 +75,16 @@ def load_divergence() -> list[dict]:
 
 @st.cache_data(ttl=120)
 def load_market_snapshot():
-    """Fetch current market data and signal proximity."""
-    from src.data.fetcher import DataFetcher
-    from src.data.features import compute_all_features
-    from src.data.structural import StructuralDataFetcher
-    from src.regime.detector import RegimeDetector
-
-    fetcher = DataFetcher()
-    struct = StructuralDataFetcher()
-    detector = RegimeDetector()
-
-    snapshots = {}
-    for sym in ASSETS:
+    """Load pre-computed market snapshot from paper trader (lightweight)."""
+    snap_path = Path("fund_data/market_snapshot.json")
+    if snap_path.exists():
         try:
-            pdf = compute_all_features(fetcher.fetch(sym, "1h", days=365))
-            df = struct.fetch_all(sym.replace("/", ""), pdf, days=365)
-            price = float(df["close"].iloc[-1])
-            atr = float(df["atr_14"].iloc[-1]) if "atr_14" in df.columns else price * 0.02
-            fr = float(df["fund_funding_rate"].iloc[-1]) if "fund_funding_rate" in df.columns else 0
-            fz = float(df["fund_funding_zscore"].iloc[-1]) if "fund_funding_zscore" in df.columns else 0
-
-            # Regime
-            try:
-                detector.fit(df)
-                regime = detector.detect(df)
-                regime_str = regime.value if hasattr(regime, "value") else str(regime)
-            except Exception:
-                regime_str = "unknown"
-
-            # BB width percentile
-            if "bb_width_20" in df.columns:
-                bb_pctile = float((df["bb_width_20"] < df["bb_width_20"].iloc[-1]).mean() * 100)
-            else:
-                bb_pctile = 50
-
-            # Donchian
-            ch_high = float(df["high"].rolling(30).max().iloc[-1])
-            ch_low = float(df["low"].rolling(30).min().iloc[-1])
-
-            # Volume ratio
-            vol_avg = float(df["volume"].rolling(20).mean().iloc[-1])
-            vol_now = float(df["volume"].iloc[-1])
-            vol_ratio = vol_now / vol_avg if vol_avg > 0 else 1
-
-            # ATR expansion
-            atr_avg = float(df["atr_14"].rolling(30).mean().iloc[-1]) if "atr_14" in df.columns else atr
-            atr_exp = atr / atr_avg if atr_avg > 0 else 1
-
-            snapshots[sym] = {
-                "price": price, "atr": atr, "funding_rate": fr,
-                "funding_zscore": fz, "regime": regime_str,
-                "bb_pctile": bb_pctile, "vol_ratio": vol_ratio,
-                "ch_high": ch_high, "ch_low": ch_low, "atr_exp": atr_exp,
-            }
-        except Exception as e:
-            snapshots[sym] = {"error": str(e)}
-
-    return snapshots
+            data = json.loads(snap_path.read_text())
+            data.pop("_timestamp", None)
+            return data
+        except Exception:
+            pass
+    return {}
 
 
 def compute_signal_proximity(sym: str, snap: dict) -> dict:

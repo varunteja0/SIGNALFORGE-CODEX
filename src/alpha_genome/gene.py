@@ -42,18 +42,30 @@ FEATURE_NAMES = [
     "bar_position",
 ]
 
-# On-chain features added by OnChainFetcher.compute_onchain_features()
-# These are optional — trees referencing missing columns evaluate to 0
-ONCHAIN_FEATURE_NAMES = [
-    "funding_zscore", "funding_extreme_long", "funding_extreme_short",
-    "funding_momentum",
-    "oi_change_pct", "oi_change_7d", "oi_zscore",
-    "util_change", "util_high", "util_zscore",
-    "whale_flow_zscore", "whale_flow_positive",
-    "exchange_flow_zscore", "exchange_outflow",
-    "stable_dom_change", "stable_dom_rising",
-    "liq_risk_zscore",
-    "tvl_change_pct", "tvl_change_7d",
+# Structural features produced by StructuralDataFetcher.fetch_all()
+# These use the actual prefixed column names from structural.py
+STRUCTURAL_FEATURE_NAMES = [
+    # Funding (prefix: fund_)
+    "fund_funding_rate", "fund_funding_zscore",
+    "fund_funding_annualized", "fund_funding_ma_7d", "fund_funding_ma_30d",
+    # Open Interest (prefix: oi_)
+    "oi_oi_change_1h", "oi_oi_change_4h", "oi_oi_change_24h", "oi_oi_zscore",
+    # Long/Short Ratio (prefix: lsr_)
+    "lsr_long_short_ratio", "lsr_lsr_zscore",
+    # Taker Volume (prefix: taker_)
+    "taker_buy_sell_ratio", "taker_taker_imbalance",
+    # Composite (no prefix)
+    "leverage_heat", "liq_pressure", "smart_money_divergence",
+]
+
+# Multi-venue features produced by MultiVenueFetcher (optional — evaluate to 0 if missing)
+MULTI_VENUE_FEATURE_NAMES = [
+    # Top trader vs retail divergence
+    "top_trader_ls_ratio", "top_retail_divergence",
+    # Cross-venue funding
+    "cross_venue_funding_spread", "cross_venue_funding_zscore",
+    # Crowding + cascade scores (from intelligence layer)
+    "crowding_score", "cascade_probability",
 ]
 
 # Advanced features from compute_all_features() — 120+ features
@@ -64,7 +76,7 @@ except ImportError:
     ADVANCED_FEATURE_NAMES = FEATURE_NAMES
 
 ALL_FEATURE_NAMES = list(dict.fromkeys(
-    ADVANCED_FEATURE_NAMES + ONCHAIN_FEATURE_NAMES
+    ADVANCED_FEATURE_NAMES + STRUCTURAL_FEATURE_NAMES + MULTI_VENUE_FEATURE_NAMES
 ))
 
 # Operations

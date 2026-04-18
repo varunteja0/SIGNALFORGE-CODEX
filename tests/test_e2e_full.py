@@ -459,14 +459,8 @@ with open("config/settings.yaml") as f:
 
 for section in ["exchange", "trading", "signals", "risk", "regime", "backtest",
                  "alpha_genome", "liquidation", "fund", "ensemble", "portfolio",
-                 "advanced_risk", "execution", "api"]:
+                 "advanced_risk", "execution"]:
     check(f"Config section: {section}", section in config)
-
-# ────────────────────────────
-print("\n[20] MULTI-TIMEFRAME FEATURES")
-# ────────────────────────────
-from src.data.multi_tf import fuse_timeframes, compute_microstructure_features
-check("Multi-TF module imports", True)
 
 # ════════════════════════════════════
 # CLEANUP

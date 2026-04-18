@@ -382,11 +382,13 @@ def _compute_all_features_inner(df: pd.DataFrame, include_calendar: bool) -> pd.
             roll_std = df[col].rolling(50).std()
             df[f"{col}_zscore"] = (df[col] - roll_mean) / (roll_std + 1e-10)
 
-    # Replace infinities and NaN with 0
-    df = df.replace([np.inf, -np.inf], 0.0)
+    # Replace infinities with NaN (NOT 0 — zero can be an active signal)
+    # NaN propagates correctly through downstream calculations and
+    # prevents phantom signals (e.g. RSI=0 reads as extremely oversold)
+    df = df.replace([np.inf, -np.inf], np.nan)
 
     n_features = len([c for c in df.columns if c not in ["open", "high", "low", "close", "volume"]])
-    logger.info(f"Computed {n_features} features")
+    logger.info(f"Computed {n_features} features ({df.isna().sum().sum()} NaN cells, mostly warmup)")
 
     return df
 

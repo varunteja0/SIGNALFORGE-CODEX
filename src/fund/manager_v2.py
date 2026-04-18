@@ -462,6 +462,9 @@ class AutonomousFundManagerV2:
 
             # Estimate actual position size for risk check
             estimated_size_usd = candidate["allocation_pct"] * kelly_frac * self.current_capital
+            # Estimate risk (distance to stop-loss × position size in units)
+            estimated_size_units = estimated_size_usd / entry_price if entry_price > 0 else 0
+            estimated_risk_usd = abs(entry_price - candidate["stop_loss"]) * estimated_size_units
 
             # ─── 2. Advanced risk check ───
             approved, size_mult, reason = self.advanced_risk.check_entry(
@@ -469,6 +472,7 @@ class AutonomousFundManagerV2:
                 symbol=candidate["asset"],
                 size_usd=estimated_size_usd,
                 current_regime_vol=self._current_regime_vol,
+                risk_usd=estimated_risk_usd,
             )
             if not approved:
                 logger.info(f"Risk rejected {strat_name}: {reason}")

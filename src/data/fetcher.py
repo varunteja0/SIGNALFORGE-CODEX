@@ -21,11 +21,13 @@ logger = logging.getLogger(__name__)
 
 CACHE_DIR = Path("data/cache")
 
-# Ordered by reliability; first working exchange wins
+# Ordered by historical depth; first working exchange wins.
+# kucoin and binance both serve 1h data back to ~2019; bybit only ~2021-07.
 EXCHANGE_CHAIN = [
-    ("bybit", {"enableRateLimit": True, "timeout": 15000}),
     ("kucoin", {"enableRateLimit": True, "timeout": 15000}),
-    ("binance", {"enableRateLimit": True, "timeout": 15000, "options": {"defaultType": "future"}}),
+    ("binance", {"enableRateLimit": True, "timeout": 15000,
+                 "options": {"defaultType": "future", "adjustForTimeDifference": True}}),
+    ("bybit", {"enableRateLimit": True, "timeout": 15000}),
 ]
 
 
@@ -82,44 +84,72 @@ class DataFetcher:
             timeframe: e.g. "1h", "4h", "1d"
             days: how many days of history to fetch
             force: if True, ignore cache and re-fetch
+
+        Behaviour:
+            * Backfills older bars if the cached window starts later than
+              the requested window (``days``).
+            * Updates forward with new bars up to ``now``.
+            * Returns only bars within the requested window.
         """
         cache_path = self._cache_path(symbol, timeframe)
+        requested_start_ms = int((time.time() - days * 86400) * 1000)
 
-        # Try to load cache
+        cached: Optional[pd.DataFrame] = None
         if not force and cache_path.exists():
             cached = pd.read_parquet(cache_path)
+
+        if cached is not None and not cached.empty:
+            cache_start_ms = int(cached.index[0].timestamp() * 1000)
+            cache_end_ms = int(cached.index[-1].timestamp() * 1000)
             age_hours = (time.time() - cache_path.stat().st_mtime) / 3600
 
-            if age_hours < 1:
+            parts = [cached]
+
+            # --- Backfill (older bars) ---
+            if cache_start_ms > requested_start_ms + 3_600_000:
                 logger.info(
-                    f"Using fresh cache for {symbol} {timeframe} "
-                    f"({len(cached)} bars, {age_hours:.1f}h old)"
+                    f"Backfilling {symbol} {timeframe}: cache starts "
+                    f"{cached.index[0]}, need older data for {days}d window"
                 )
-                return cached
+                older = self._fetch_from_exchange(
+                    symbol, timeframe,
+                    since_ms=requested_start_ms,
+                    stop_ms=cache_start_ms - 1,
+                )
+                if not older.empty:
+                    parts.insert(0, older)
+                    logger.info(f"  backfilled {len(older)} older bars")
 
-            # Incremental update: fetch only new bars
-            last_ts = int(cached.index[-1].timestamp() * 1000) + 1
-            new_bars = self._fetch_from_exchange(symbol, timeframe, since_ms=last_ts)
+            # --- Forward update (new bars) ---
+            if age_hours >= 1:
+                newer = self._fetch_from_exchange(
+                    symbol, timeframe,
+                    since_ms=cache_end_ms + 1,
+                )
+                if not newer.empty:
+                    parts.append(newer)
+                    logger.info(f"  appended {len(newer)} new bars")
 
-            if not new_bars.empty:
-                df = pd.concat([cached, new_bars])
+            if len(parts) > 1:
+                df = pd.concat(parts)
                 df = df[~df.index.duplicated(keep="last")].sort_index()
                 df.to_parquet(cache_path)
-                logger.info(
-                    f"Updated cache: +{len(new_bars)} bars for {symbol} {timeframe}"
-                )
-                return df
+            else:
+                df = cached
+        else:
+            # Full fetch
+            logger.info(
+                f"Fetching {days} days of {symbol} {timeframe} from {self.exchange_id}..."
+            )
+            df = self._fetch_from_exchange(symbol, timeframe, since_ms=requested_start_ms)
+            if not df.empty:
+                df.to_parquet(cache_path)
+                logger.info(f"Cached {len(df)} bars to {cache_path}")
 
-            return cached
-
-        # Full fetch
-        logger.info(f"Fetching {days} days of {symbol} {timeframe} from {self.exchange_id}...")
-        since_ms = int((time.time() - days * 86400) * 1000)
-        df = self._fetch_from_exchange(symbol, timeframe, since_ms=since_ms)
-
+        # Clip to requested window
         if not df.empty:
-            df.to_parquet(cache_path)
-            logger.info(f"Cached {len(df)} bars to {cache_path}")
+            cutoff = pd.Timestamp.utcfromtimestamp(requested_start_ms / 1000).tz_localize(None)
+            df = df[df.index >= cutoff]
 
         return df
 
@@ -128,38 +158,69 @@ class DataFetcher:
         symbol: str,
         timeframe: str,
         since_ms: int,
-        max_bars: int = 100_000,
+        max_bars: int = 500_000,
+        stop_ms: Optional[int] = None,
     ) -> pd.DataFrame:
-        """Paginated fetch with rate limiting."""
+        """Paginated fetch with rate limiting.
+
+        Fetches bars starting from ``since_ms`` up to ``stop_ms`` (or now).
+        """
         all_candles = []
         # Bybit max = 1000, KuCoin = 1500, Binance = 1000
         batch_limits = {"bybit": 1000, "kucoin": 1500, "binance": 1000}
         batch_size = batch_limits.get(self.exchange_id, 200)
         now_ms = int(time.time() * 1000)
+        end_ms = stop_ms if stop_ms is not None else now_ms
 
         while len(all_candles) < max_bars:
-            try:
-                candles = self.exchange.fetch_ohlcv(
-                    symbol, timeframe, since=since_ms, limit=batch_size
-                )
-            except Exception as e:
-                logger.error(f"Fetch error for {symbol} {timeframe}: {e}")
-                break
+            candles = None
+            delay = 1.0
+            for attempt in range(5):
+                try:
+                    candles = self.exchange.fetch_ohlcv(
+                        symbol, timeframe, since=since_ms, limit=batch_size
+                    )
+                    break
+                except Exception as e:
+                    msg = str(e)
+                    is_rate = ("429" in msg or "rate" in msg.lower()
+                               or "too many" in msg.lower())
+                    if is_rate and attempt < 4:
+                        logger.warning(
+                            f"Rate-limited on {symbol} {timeframe} "
+                            f"(attempt {attempt + 1}/5) — sleeping {delay:.1f}s"
+                        )
+                        time.sleep(delay)
+                        delay *= 2
+                        continue
+                    logger.error(f"Fetch error for {symbol} {timeframe}: {e}")
+                    candles = None
+                    break
 
             if not candles:
                 break
 
+            # Filter candles past end_ms
+            if stop_ms is not None:
+                candles = [c for c in candles if c[0] <= end_ms]
+                if not candles:
+                    break
+
             all_candles.extend(candles)
             last_ts = candles[-1][0]
+
+            # Stop conditions
+            if last_ts >= end_ms - 3_600_000:
+                break
+            if len(candles) < batch_size // 2:
+                # Exchange returned a partial/empty window — no more data
+                break
+
             since_ms = last_ts + 1
 
             # Progress logging every 5k bars
             if len(all_candles) % 5000 < len(candles):
                 logger.info(f"  ... {len(all_candles)} bars fetched so far")
-
-            # Stop if we've reached current time
-            if last_ts >= now_ms - 3_600_000:
-                break
 
             # Rate-limit courtesy
             time.sleep(0.15)

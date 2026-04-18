@@ -160,13 +160,14 @@ class PortfolioEngine:
 
     @classmethod
     def default(cls) -> "PortfolioEngine":
-        """Create engine with default 4-strategy portfolio.
+        """Create engine with default 5-strategy portfolio.
 
         Strategies:
             1. funding_mr_v7 (proven, 7/7 validation, PF 1.80)
             2. extreme_funding_spike (PF 3.07, high-conviction spikes)
             3. funding_vol_squeeze (PF 1.87, coiled spring)
             4. momentum_breakout (orthogonal trend-following alpha)
+            5. contrarian_asym (PF 3.10, SHORT-only funding asymmetry)
 
         Dropped: liq_bounce (PF 0.63 — no edge, destroys portfolio)
         """
@@ -176,6 +177,7 @@ class PortfolioEngine:
             FundingVolSqueezeTemplate,
         )
         from src.engine.momentum_breakout import MomentumBreakoutTemplate
+        from src.engine.structural_stress import ContrarianAsymmetryEngine
 
         slots = [
             # 1. The proven edge — anchor strategy
@@ -235,6 +237,21 @@ class PortfolioEngine:
                 regime_filter=None,
                 stop_loss_atr=2.0,
                 take_profit_atr=4.0,
+                max_holding_bars=24,
+            ),
+            # 5. Contrarian asymmetry — SHORT-only on alts (PF=3.10)
+            #    Exploits funding direction asymmetry: crowd LONG on alts = dumb money
+            StrategySlot(
+                name="contrarian_asym",
+                template="contrarian_asymmetry",
+                signal_func=lambda df: ContrarianAsymmetryEngine.generate_signals(
+                    df, funding_z_threshold=2.0, funding_lookback=168,
+                    hold_bars=12, require_volume_confirm=False,
+                ),
+                allowed_assets=["ETH/USDT", "SOL/USDT", "XRP/USDT"],
+                regime_filter=None,
+                stop_loss_atr=1.5,
+                take_profit_atr=3.0,
                 max_holding_bars=24,
             ),
         ]
@@ -414,24 +431,29 @@ class PortfolioEngine:
                         pass  # trades don't carry symbol in current backtest
                 continue
 
-        # Build combined equity curve
+        # Build combined equity curve from ACTUAL PnL (not averaged normals)
         if equity_curves:
-            # Normalize all curves to start at 1, then average
-            norm_curves = {}
+            # Convert each equity curve to PER-BAR PnL increments,
+            # then sum across all strategy×asset cells.
+            # This properly handles different trade timing and counts.
+            pnl_curves = {}
             for key, curve in equity_curves.items():
-                if len(curve) > 0:
-                    norm_curves[key] = curve / curve.iloc[0]
+                if len(curve) > 1:
+                    pnl_curves[key] = curve.diff().fillna(0)
 
-            if norm_curves:
-                combined = pd.concat(norm_curves.values(), axis=1).mean(axis=1)
-                result.equity_curve = combined * self.capital
+            if pnl_curves:
+                # Sum all PnL streams — each starts at 0
+                combined_pnl = pd.concat(pnl_curves.values(), axis=1).sum(axis=1)
+                # Build portfolio equity from initial capital + cumulative PnL
+                result.equity_curve = self.capital + combined_pnl.cumsum()
 
-                # Portfolio metrics from combined curve
-                returns = combined.pct_change().dropna()
+                # Portfolio metrics from actual equity
+                eq = result.equity_curve
+                returns = eq.pct_change().dropna()
                 if len(returns) > 0 and returns.std() > 0:
                     result.sharpe = returns.mean() / returns.std() * np.sqrt(252 * 24)
-                    peak = combined.cummax()
-                    dd = (combined - peak) / peak
+                    peak = eq.cummax()
+                    dd = (eq - peak) / peak
                     result.max_drawdown = abs(dd.min())
 
         # Overall metrics

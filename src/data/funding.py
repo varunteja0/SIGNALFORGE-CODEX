@@ -142,14 +142,19 @@ class FundingRateFetcher:
         Funding rates are published every 8 hours.
         This forward-fills them to match any OHLCV timeframe (1h, 4h, etc).
 
+        IMPORTANT: Missing data stays NaN — do NOT fillna(0).
+        A funding rate of 0.0 has a real meaning (balanced), which is
+        different from "data not available".
+
         Returns a Series aligned to ohlcv_df.index.
         """
         if funding_df.empty:
-            return pd.Series(0.0, index=ohlcv_df.index, name="funding_rate")
+            return pd.Series(np.nan, index=ohlcv_df.index, name="funding_rate")
 
-        # Reindex to OHLCV timestamps, forward-fill
+        # Reindex to OHLCV timestamps, forward-fill only (no bfill)
         aligned = funding_df["funding_rate"].reindex(
             ohlcv_df.index, method="ffill"
-        ).fillna(0)
+        )
+        # NaN stays NaN — do NOT fill with 0
 
         return aligned

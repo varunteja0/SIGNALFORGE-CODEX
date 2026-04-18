@@ -122,10 +122,13 @@ class StructuralDataFetcher:
 
         df = pd.DataFrame(all_data)
         df["timestamp"] = pd.to_datetime(df["fundingTime"], unit="ms")
-        df["funding_rate"] = df["fundingRate"].astype(float)
-        df["mark_price"] = df["markPrice"].astype(float)
+        # Old Binance funding records occasionally have empty markPrice
+        # strings — coerce to NaN rather than raising.
+        df["funding_rate"] = pd.to_numeric(df["fundingRate"], errors="coerce")
+        df["mark_price"] = pd.to_numeric(df["markPrice"], errors="coerce")
         df = df[["timestamp", "funding_rate", "mark_price"]].set_index("timestamp")
         df = df[~df.index.duplicated(keep="last")].sort_index()
+        df = df.dropna(subset=["funding_rate"])
 
         # Derived features
         df["funding_annualized"] = df["funding_rate"] * 3 * 365  # 3x per day
@@ -375,11 +378,19 @@ class StructuralDataFetcher:
         lsr = lsr.add_prefix("lsr_")
         taker = taker.add_prefix("taker_")
 
+        def _normalize_index(idx):
+            """Convert any datetime index to datetime64[ns] (tz-naive) for merge."""
+            if hasattr(idx, 'tz') and idx.tz is not None:
+                return idx.tz_localize(None).astype("datetime64[ns]")
+            return idx.astype("datetime64[ns]")
+
         if price_df is not None and not price_df.empty:
             # Merge everything onto price index using forward-fill
             result = price_df.copy()
+            result.index = _normalize_index(result.index)
             for struct_df in [funding, oi, lsr, taker]:
                 if not struct_df.empty:
+                    struct_df.index = _normalize_index(struct_df.index)
                     result = pd.merge_asof(
                         result.sort_index(),
                         struct_df.sort_index(),
@@ -395,6 +406,8 @@ class StructuralDataFetcher:
             result = oi if not oi.empty else pd.DataFrame()
             for struct_df in [funding, lsr, taker]:
                 if not struct_df.empty and not result.empty:
+                    result.index = _normalize_index(result.index)
+                    struct_df.index = _normalize_index(struct_df.index)
                     result = pd.merge_asof(
                         result.sort_index(),
                         struct_df.sort_index(),

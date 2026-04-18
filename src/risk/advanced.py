@@ -90,6 +90,7 @@ class AdvancedRiskManager:
         self._daily_start = initial_capital
         self._daily_pnl = 0.0
         self._last_day_reset = time.time()
+        self._last_hourly_reset = time.time()
 
         # Recent returns for correlation monitoring
         self._strategy_returns: dict[str, list[float]] = {}
@@ -110,14 +111,25 @@ class AdvancedRiskManager:
             self._daily_pnl = 0.0
             self._last_day_reset = time.time()
 
+        # Hourly reset for circuit breaker hourly_loss_pct
+        if time.time() - self._last_hourly_reset > 3600:
+            for cb in self.breakers.values():
+                cb.hourly_loss_pct = 0.0
+            self._last_hourly_reset = time.time()
+
     def check_entry(
         self,
         strategy_name: str,
         symbol: str,
         size_usd: float,
         current_regime_vol: float = 0.02,
+        risk_usd: float = 0.0,
     ) -> tuple[bool, float, str]:
         """Pre-trade check: should this trade be allowed?
+
+        Args:
+            risk_usd: Estimated risk in USD (e.g. |entry - stop_loss| * size).
+                      If 0, defaults to 5% of size_usd as conservative estimate.
 
         Returns:
             (approved, adjusted_size_multiplier, reason)
@@ -138,10 +150,12 @@ class AdvancedRiskManager:
                 cb.is_tripped = False
                 cb.consecutive_losses = 0
 
-        # 3. Check portfolio heat
+        # 3. Check portfolio heat (risk-based, not notional)
+        estimated_risk = risk_usd if risk_usd > 0 else size_usd * 0.05
         current_heat = self._compute_portfolio_heat()
-        if current_heat + size_usd / self.capital > self.max_heat:
-            return False, 0.0, f"Portfolio heat {current_heat:.1%} + new trade exceeds max {self.max_heat:.1%}"
+        new_heat = current_heat + estimated_risk / self.capital
+        if new_heat > self.max_heat:
+            return False, 0.0, f"Portfolio heat {current_heat:.1%} + {estimated_risk/self.capital:.1%} = {new_heat:.1%} exceeds max {self.max_heat:.1%}"
 
         # 4. Check liquidity buffer
         available = self.capital * (1 - self.liquidity_buffer)
@@ -237,9 +251,13 @@ class AdvancedRiskManager:
             can_trade = True
             reason = ""
 
-        # Regime adjustment
-        regime_mult = min(2.0, self.regime_vol_baseline / (current_regime_vol + 1e-10))
-        regime_mult = max(0.25, min(1.5, regime_mult))
+        # Regime adjustment: SCALE DOWN when vol is elevated
+        # Low vol (calm) → regime_mult ~ 1.0 (normal sizing)
+        # High vol → regime_mult < 1.0 (smaller bets)
+        # NEVER go ABOVE 1.0 — low vol precedes vol explosions
+        vol_ratio = current_regime_vol / (self.regime_vol_baseline + 1e-10)
+        regime_mult = min(1.0, 1.0 / max(1.0, vol_ratio))
+        regime_mult = max(0.25, regime_mult)
 
         # Tripped breakers
         tripped = [
@@ -293,8 +311,25 @@ class AdvancedRiskManager:
         if self.capital <= 0:
             return 1.0
 
-        total_risk = sum(
-            pos.get("risk_usd", 0)
-            for pos in self.open_positions.values()
-        )
+        total_risk = 0.0
+        for pos in self.open_positions.values():
+            risk_usd = pos.get("risk_usd", 0)
+            if risk_usd <= 0:
+                # Fallback: estimate risk as 5% of notional
+                risk_usd = pos.get("notional", 0) * 0.05
+            total_risk += risk_usd
         return total_risk / self.capital
+
+    def close_all_positions(self) -> list[str]:
+        """Emergency: flag all positions for immediate closure.
+
+        Called when black band is triggered.
+        Returns list of symbols that need to be closed.
+        """
+        symbols_to_close = list(self.open_positions.keys())
+        if symbols_to_close:
+            logger.critical(
+                f"BLACK BAND EMERGENCY: Closing {len(symbols_to_close)} positions: "
+                f"{symbols_to_close}"
+            )
+        return symbols_to_close

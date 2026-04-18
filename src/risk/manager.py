@@ -124,7 +124,12 @@ class RiskManager:
             )
 
         # Kelly Criterion position sizing
-        kelly = self._kelly_fraction(request.signal_strength)
+        # Use actual strategy win rate if available, not signal_strength
+        kelly = self._kelly_fraction(
+            win_probability=min(request.signal_strength, 0.7),  # Cap at 70% — overconfident signals kill
+            avg_win=getattr(request, 'avg_win', 0.0),
+            avg_loss=getattr(request, 'avg_loss', 0.0),
+        )
         
         # Risk-based sizing: risk X% of capital
         max_risk_amount = self.current_capital * self.limits.max_position_pct
@@ -159,25 +164,38 @@ class RiskManager:
             kelly_fraction=kelly,
         )
 
-    def _kelly_fraction(self, win_probability: float) -> float:
+    def _kelly_fraction(
+        self,
+        win_probability: float,
+        avg_win: float = 0.0,
+        avg_loss: float = 0.0,
+    ) -> float:
         """Kelly Criterion: f* = (bp - q) / b
-        
+
         Where:
-        - b = odds received on the bet (assumed 1.5:1 avg win/loss)
-        - p = probability of winning
+        - b = actual win/loss ratio from strategy history (NOT hardcoded)
+        - p = calibrated win probability (NOT raw signal strength)
         - q = probability of losing
-        
-        We use HALF Kelly for safety (full Kelly is too aggressive).
+
+        If avg_win/avg_loss not provided, fall back to conservative 1.0:1.
+        We use QUARTER Kelly for safety (full Kelly is too aggressive
+        with estimation error, half Kelly still too much for crypto).
         """
-        b = 1.5  # Assume 1.5:1 reward/risk ratio
+        # Compute actual reward/risk ratio from strategy statistics
+        if avg_loss > 0 and avg_win > 0:
+            b = avg_win / avg_loss
+        else:
+            b = 1.0  # Conservative fallback — assume 1:1
+
         p = max(0.01, min(0.99, win_probability))
         q = 1 - p
-        
+
         kelly = (b * p - q) / b
         kelly = max(0, min(1, kelly))
-        
-        # Half Kelly for safety
-        return kelly * 0.5
+
+        # Quarter Kelly — full Kelly requires perfect parameter estimation
+        # which we never have in practice
+        return kelly * 0.25
 
     def register_open(self, symbol: str, direction: int, size: float, entry_price: float):
         """Register a newly opened position."""

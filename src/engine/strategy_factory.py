@@ -1,18 +1,13 @@
 """
 Strategy Factory — Systematic Generation of Trading Strategy Variants
 =====================================================================
-Generates candidates from multiple strategy templates with parameter
-variations. Each template exploits a different market microstructure
-inefficiency.
+Generates candidates from strategy templates with parameter variations.
+Each template exploits a different market microstructure inefficiency.
 
 Templates:
-    1. Liquidation Reversal  — Proven: PF 1.50 on BTC+ETH
-    2. Funding Rate Reversion — Exploit mechanical funding normalization
-    3. Volatility Squeeze     — BB squeeze → breakout momentum
-    4. Momentum Exhaustion    — RSI divergence at extremes
-
-Each template produces signals in [-1, 0, 1] format compatible with
-Backtester.run().
+    1. Funding Rate Reversion — Exploit mechanical funding normalization
+    2. Volatility Squeeze     — BB squeeze → breakout momentum
+    3. Momentum Exhaustion    — RSI divergence at extremes
 """
 
 import logging
@@ -60,79 +55,7 @@ def _first_signal_only(signals: pd.Series, cooldown: int) -> pd.Series:
     return pd.Series(result, index=signals.index)
 
 
-# ─── Template 1: Liquidation Reversal (proven) ──────────────────
-
-class LiquidationReversalTemplate:
-    """Liquidation cascade reversal with structural data.
-
-    This is the proven template (PF 1.50 on BTC+ETH).
-    Variations sweep the key parameters around the calibrated center.
-    """
-
-    PARAM_GRID = {
-        "liq_z_threshold": [1.5, 2.0, 2.5, 3.0],
-        "rsi_oversold": [30.0, 35.0, 40.0],
-        "rsi_overbought": [60.0, 65.0, 70.0],
-        "max_wait_bars": [2, 4, 6],
-        "stop_loss_atr_mult": [1.5, 2.0, 2.5],
-        "take_profit_atr_mult": [3.0, 4.0, 5.0],
-        "max_holding_bars": [12, 24, 36],
-    }
-
-    @staticmethod
-    def generate_candidates(n_random: int = 20, include_best: bool = True):
-        from src.strategies.liquidation_reversal import (
-            LiquidationReversalStrategy,
-            StrategyConfig,
-        )
-
-        candidates = []
-
-        # The proven best configuration
-        if include_best:
-            strategy = LiquidationReversalStrategy(StrategyConfig())
-            cfg = strategy.config
-            candidates.append(StrategyCandidate(
-                name="liq_reversal_best",
-                template="liquidation_reversal",
-                params={k: getattr(cfg, k) for k in LiquidationReversalTemplate.PARAM_GRID},
-                signal_func=lambda df, s=strategy: s.generate_signals(df),
-                stop_loss_atr=cfg.stop_loss_atr_mult,
-                take_profit_atr=cfg.take_profit_atr_mult,
-                max_holding_bars=cfg.max_holding_bars,
-                position_size_pct=cfg.base_risk_pct,
-                description="Proven best: SL=2, TP=4, MH=24",
-            ))
-
-        # Random parameter variations
-        rng = np.random.default_rng(42)
-        grid = LiquidationReversalTemplate.PARAM_GRID
-
-        for i in range(n_random):
-            params = {key: rng.choice(values) for key, values in grid.items()}
-            config = StrategyConfig()
-            for key, value in params.items():
-                setattr(config, key, value)
-            strategy = LiquidationReversalStrategy(config)
-
-            candidates.append(StrategyCandidate(
-                name=f"liq_reversal_v{i}",
-                template="liquidation_reversal",
-                params=params,
-                signal_func=lambda df, s=strategy: s.generate_signals(df),
-                stop_loss_atr=params["stop_loss_atr_mult"],
-                take_profit_atr=params["take_profit_atr_mult"],
-                max_holding_bars=params["max_holding_bars"],
-                description=f"liq_z={params['liq_z_threshold']}, "
-                            f"rsi={params['rsi_oversold']}, "
-                            f"sl={params['stop_loss_atr_mult']}, "
-                            f"tp={params['take_profit_atr_mult']}",
-            ))
-
-        return candidates
-
-
-# ─── Template 2: Funding Rate Mean Reversion ────────────────────
+# ─── Template 1: Funding Rate Mean Reversion ────────────────────
 
 class FundingReversionTemplate:
     """Exploit mechanical funding rate normalization.
@@ -422,24 +345,17 @@ class StrategyFactory:
         """Generate candidates from all templates."""
         candidates = []
 
-        # Template 1: Liquidation Reversal (proven edge)
-        liq = LiquidationReversalTemplate.generate_candidates(
-            n_random=self.n_per_template, include_best=True
-        )
-        candidates.extend(liq)
-        logger.info(f"Liquidation Reversal: {len(liq)} candidates")
-
-        # Template 2: Funding Rate Mean Reversion
+        # Template 1: Funding Rate Mean Reversion
         fund = FundingReversionTemplate.generate_candidates(self.n_per_template)
         candidates.extend(fund)
         logger.info(f"Funding Reversion: {len(fund)} candidates")
 
-        # Template 3: Volatility Squeeze
+        # Template 2: Volatility Squeeze
         squeeze = VolSqueezeTemplate.generate_candidates(self.n_per_template)
         candidates.extend(squeeze)
         logger.info(f"Volatility Squeeze: {len(squeeze)} candidates")
 
-        # Template 4: Momentum Exhaustion
+        # Template 3: Momentum Exhaustion
         mom = MomentumExhaustionTemplate.generate_candidates(self.n_per_template)
         candidates.extend(mom)
         logger.info(f"Momentum Exhaustion: {len(mom)} candidates")
@@ -450,7 +366,6 @@ class StrategyFactory:
     def generate_template(self, template_name: str, n: int = 20) -> list[StrategyCandidate]:
         """Generate candidates from a single template."""
         templates = {
-            "liquidation_reversal": lambda: LiquidationReversalTemplate.generate_candidates(n, True),
             "funding_reversion": lambda: FundingReversionTemplate.generate_candidates(n),
             "vol_squeeze": lambda: VolSqueezeTemplate.generate_candidates(n),
             "momentum_exhaustion": lambda: MomentumExhaustionTemplate.generate_candidates(n),

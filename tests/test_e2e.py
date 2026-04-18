@@ -295,31 +295,31 @@ with open("config/settings.yaml", encoding="utf-8") as f:
 check("Config has all sections",
       all(k in config for k in ["alpha_genome", "liquidation", "fund"]))
 
-# main.py parses
+# main CLI parses
 import ast
-with open("main.py", encoding="utf-8") as f:
+with open("sf.py", encoding="utf-8") as f:
     ast.parse(f.read())
-check("main.py syntax valid", True)
+check("sf.py syntax valid", True)
 
-# Pipeline script parses
-with open("scripts/run_pipeline.py", encoding="utf-8") as f:
+# go_live script parses
+with open("scripts/go_live.py", encoding="utf-8") as f:
     ast.parse(f.read())
-check("Pipeline script syntax valid", True)
+check("go_live script syntax valid", True)
 
 # Dashboard script parses
-with open("scripts/dashboard.py", encoding="utf-8") as f:
+with open("scripts/live_dashboard.py", encoding="utf-8") as f:
     ast.parse(f.read())
 check("Dashboard script syntax valid", True)
 
-# Paper trading script parses
-with open("scripts/paper_trade.py", encoding="utf-8") as f:
+# Autonomous loop script parses
+with open("scripts/autonomous_loop.py", encoding="utf-8") as f:
     ast.parse(f.read())
-check("Paper trading script syntax valid", True)
+check("Autonomous loop syntax valid", True)
 
-# Calibration script parses
-with open("scripts/calibrate_cascade.py", encoding="utf-8") as f:
+# Alerts script parses
+with open("scripts/alerts.py", encoding="utf-8") as f:
     ast.parse(f.read())
-check("Calibration script syntax valid", True)
+check("Alerts script syntax valid", True)
 
 # Calibration output exists
 cal_path = Path("config/calibration.json")

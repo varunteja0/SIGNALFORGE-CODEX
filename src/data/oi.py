@@ -241,7 +241,10 @@ class OpenInterestFetcher:
         df["timestamp"] = pd.to_datetime(df["timestamp"].astype(int), unit="ms")
         df.set_index("timestamp", inplace=True)
         df["oi_contracts"] = df["openInterest"].astype(float)
-        df["oi_value"] = df["oi_contracts"]  # Bybit may not provide USDT value directly
+        # Bybit reports OI in contracts — approximate USD value from
+        # last known price. If price unavailable, leave as NaN rather
+        # than using raw contract count (different units than Binance).
+        df["oi_value"] = np.nan  # Will be filled by align_to_ohlcv using price
         df = df[["oi_contracts", "oi_value"]]
         df = df[~df.index.duplicated(keep="last")].sort_index()
 
@@ -253,21 +256,36 @@ class OpenInterestFetcher:
         oi_df: pd.DataFrame,
         ohlcv_df: pd.DataFrame,
     ) -> pd.DataFrame:
-        """Align OI data to OHLCV timeframe via forward-fill.
+        """Align OI data to OHLCV timeframe via forward-fill only.
+
+        IMPORTANT: Only forward-fill (ffill), NEVER backward-fill (bfill).
+        bfill uses future data = lookahead bias.
+        Missing data at the start stays NaN.
 
         Returns DataFrame with oi_value and oi_change_pct columns
         aligned to ohlcv_df.index.
         """
         if oi_df.empty:
             return pd.DataFrame({
-                "oi_value": 0.0,
-                "oi_change_pct": 0.0,
+                "oi_value": np.nan,
+                "oi_change_pct": np.nan,
             }, index=ohlcv_df.index)
 
-        aligned = oi_df.reindex(ohlcv_df.index, method="ffill").fillna(method="bfill")
+        # Forward-fill ONLY — no bfill (lookahead bias)
+        aligned = oi_df.reindex(ohlcv_df.index, method="ffill")
 
         result = pd.DataFrame(index=ohlcv_df.index)
-        result["oi_value"] = aligned["oi_value"].fillna(0)
-        result["oi_change_pct"] = result["oi_value"].pct_change().fillna(0)
+
+        # If oi_value is NaN (Bybit), estimate from contracts * close price
+        if "oi_value" in aligned.columns and aligned["oi_value"].isna().all():
+            if "close" in ohlcv_df.columns:
+                result["oi_value"] = aligned["oi_contracts"] * ohlcv_df["close"]
+            else:
+                result["oi_value"] = aligned["oi_contracts"]
+        else:
+            result["oi_value"] = aligned["oi_value"]
+
+        # NaN stays NaN — do NOT fillna(0) (that masks missing data)
+        result["oi_change_pct"] = result["oi_value"].pct_change()
 
         return result
