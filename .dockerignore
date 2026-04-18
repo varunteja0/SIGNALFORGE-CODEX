@@ -1,0 +1,70 @@
+# Build context trimmer — keep Docker builds fast & secrets out of images.
+
+# VCS
+.git
+.gitignore
+.github
+
+# Environments / editors
+.venv
+venv
+env
+.env
+.env.*
+!.env.example
+.vscode
+.idea
+
+# Python
+__pycache__
+*.py[cod]
+*.egg-info
+build
+dist
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+
+# Notebooks / research
+notebooks
+research
+_archive
+
+# Regeneratable artefacts
+data/cache
+pipeline_output
+fund_data/*.db
+fund_data/*.db-shm
+fund_data/*.db-wal
+fund_data/*.log
+fund_data/ledger.json
+fund_data/adaptation_log.json
+fund_data/alert_log.json
+fund_data/live_state.json
+fund_data/market_snapshot.json
+fund_data/health.json
+fund_data/pids
+fund_data/monitor
+fund_data/autopsies
+fund_data/outcome_runs
+fund_data/validation_*.json
+fund_data/tearsheet.html
+evolved_strategies/latest_evolution.json
+test_fund
+test_evolved
+
+# Tests & docs
+tests
+*.md
+!README.md
+!LICENSE
+CHANGELOG.md
+CONTRIBUTING.md
+SECURITY.md
+PROGRESS.md
+
+# OS
+.DS_Store
+Thumbs.db

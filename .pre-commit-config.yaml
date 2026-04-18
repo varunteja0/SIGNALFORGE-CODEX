@@ -1,0 +1,52 @@
+# Install: pip install pre-commit && pre-commit install
+# Run on all files: pre-commit run --all-files
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-yaml
+        exclude: ^\.github/
+      - id: check-toml
+      - id: check-json
+        exclude: ^fund_data/
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: end-of-file-fixer
+        exclude: ^(fund_data/|data/|_archive/|PROGRESS\.md)
+      - id: trailing-whitespace
+        exclude: ^(fund_data/|data/|_archive/|PROGRESS\.md)
+      - id: mixed-line-ending
+      - id: detect-private-key
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    hooks:
+      - id: black
+        exclude: ^(_archive/|notebooks/|research/)
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+        exclude: ^(fund_data/|data/|_archive/|\.venv/|tests/|PROGRESS\.md)
+
+# Global excludes — never run hooks on these.
+exclude: |
+  (?x)^(
+    _archive/|
+    notebooks/|
+    data/cache/|
+    fund_data/ledger\.json|
+    fund_data/.*\.json
+  )

@@ -120,6 +120,7 @@ class HarnessReport:
     portfolio_oos_sharpe: float = 0.0
     portfolio_oos_max_dd: float = 0.0
     portfolio_mar: float = 0.0
+    n_correlation_clusters: int = 0
 
     # Verdict
     n_survivors: int = 0
@@ -833,6 +834,7 @@ def run_validation(
         portfolio_oos_sharpe=port["portfolio_oos_sharpe"],
         portfolio_oos_max_dd=port["portfolio_oos_max_dd"],
         portfolio_mar=port["portfolio_mar"],
+        n_correlation_clusters=int(port.get("n_correlation_clusters", 0)),
         n_survivors=n_keep,
         n_killed=n_kill,
         overall_verdict=overall,

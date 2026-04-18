@@ -1,0 +1,87 @@
+# ==========================================================================
+# SignalForge — local orchestration
+#
+# Three services:
+#   - paper-trader : long-running paper trading loop (sf run)
+#   - validator    : on-demand validation suite (sf validate-all)
+#   - dashboard    : Streamlit live dashboard (scripts/live_dashboard.py)
+#
+# Usage:
+#   docker compose up paper-trader           # default: paper trading
+#   docker compose run --rm validator        # one-shot validation
+#   docker compose up dashboard              # serves :8501
+# ==========================================================================
+
+name: signalforge
+
+services:
+  paper-trader:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: signalforge:latest
+    container_name: sf-paper-trader
+    command: ["run"]
+    env_file:
+      - path: ./.env
+        required: false
+    environment:
+      SIGNALFORGE_ENV: paper
+      SIGNALFORGE_LOG_LEVEL: INFO
+    volumes:
+      - ./fund_data:/app/fund_data
+      - ./data/cache:/app/data/cache
+      - ./evolved_strategies:/app/evolved_strategies
+      - ./config:/app/config:ro
+    restart: unless-stopped
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "sf", "--help"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+  validator:
+    image: signalforge:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sf-validator
+    command:
+      - "validate-all"
+      - "--symbols"
+      - "BTC/USDT"
+      - "ETH/USDT"
+      - "SOL/USDT"
+      - "--timeframe"
+      - "1h"
+      - "--days"
+      - "1825"
+      - "--min-trades"
+      - "50"
+      - "--oos-fraction"
+      - "0.30"
+      - "--output"
+      - "fund_data/validation_docker.json"
+    volumes:
+      - ./fund_data:/app/fund_data
+      - ./data/cache:/app/data/cache
+      - ./config:/app/config:ro
+    profiles: ["ops"]
+
+  dashboard:
+    image: signalforge:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sf-dashboard
+    # Override entrypoint — dashboard is a script, not a CLI subcommand.
+    entrypoint: ["python"]
+    command: ["-m", "streamlit", "run", "scripts/live_dashboard.py", "--server.port=8501", "--server.address=0.0.0.0"]
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./fund_data:/app/fund_data:ro
+      - ./config:/app/config:ro
+    restart: unless-stopped
+    profiles: ["ops"]

@@ -263,11 +263,44 @@ make cov           # coverage report
 The suite covers:
 
 - **Backtester invariants** (`test_backtest_invariants.py`) — no-lookahead, reproducibility, cost monotonicity, warmup gating, non-negative equity
+- **Strategy registry** (`test_registry.py`) — append-only ledger, version monotonicity, config-hash stability
 - Core unit tests (`test_v2.py`)
 - Integration tests (`test_v2_integration.py`)
 - Factory pipeline (`test_factory.py`)
 - End-to-end smoke tests (`test_e2e.py`, `test_e2e_full.py`)
 - Institutional validation harness (`tests/validate_all.py`)
+
+---
+
+## Docker
+
+Multi-stage image, non-root runtime, slim base:
+
+```bash
+docker build -t signalforge:latest .
+docker run --rm signalforge:latest --help
+
+# orchestrated services
+docker compose up paper-trader                # long-running paper loop
+docker compose --profile ops run --rm validator   # one-shot validation
+docker compose --profile ops up dashboard     # Streamlit on :8501
+```
+
+State (`fund_data/`, `data/cache/`) is mounted as a volume so containers
+are disposable.
+
+---
+
+## Operational Tooling
+
+- **Strategy registry** — every deploy records commit hash, config hash,
+  validation hash, and params to `fund_data/registry.ndjson` (append-only).
+  Inspect with `python -m src.registry list --latest` or `show <id>`.
+- **Capacity analysis** — estimate AUM capacity from a validation run:
+  `python -m research.capacity --input fund_data/validation_v16.json`.
+- **Tearsheet** — HTML report with embedded charts: `make tearsheet`.
+- **Pre-commit** — `pre-commit install` enforces ruff / black / secret
+  detection / file hygiene on every commit.
 
 ---
 
@@ -277,7 +310,7 @@ The suite covers:
 - [ ] Options overlay (hedged carry)
 - [ ] Cross-venue arbitrage with inventory accounting
 - [ ] Live Grafana / Streamlit dashboard bundled as a service
-- [ ] Model registry + strategy versioning
+- [x] Model registry + strategy versioning
 - [ ] Published research notes for each production strategy
 
 ---

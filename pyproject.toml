@@ -62,6 +62,8 @@ dev = [
     "ruff>=0.4",
     "black>=24.0",
     "mypy>=1.10",
+    "pre-commit>=3.7",
+    "detect-secrets>=1.5",
 ]
 tearsheet = [
     "matplotlib>=3.8",

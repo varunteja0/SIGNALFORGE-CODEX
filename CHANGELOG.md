@@ -9,6 +9,11 @@ where practical for research software.
 ## [Unreleased]
 
 ### Added
+- **Docker** — multi-stage `Dockerfile` (python 3.11-slim, non-root user, venv-isolated) and `docker-compose.yml` with `paper-trader`, `validator`, and `dashboard` services; `.dockerignore` excludes state and caches from the build context.
+- **Pre-commit hooks** (`.pre-commit-config.yaml`) — ruff, black, detect-secrets, and the standard pre-commit-hooks suite (trailing whitespace, EOF, YAML/TOML/JSON lint, private-key detection, large-file guard). Installed via `pre-commit install` after `pip install -e ".[dev]"`.
+- **CodeQL security scanning** (`.github/workflows/codeql.yml`) — weekly + on-push Python analysis with the `security-and-quality` query pack.
+- **Strategy registry** (`src/registry.py`, 10 tests in `tests/test_registry.py`) — append-only NDJSON ledger at `fund_data/registry.ndjson` capturing every deploy with `commit_hash`, `config_hash`, `validation_hash`, parameters, trainer metadata, and operator identity. CLI: `python -m src.registry {list,show,diff}`.
+- **Capacity analysis** (`research/capacity.py`) — square-root market-impact model estimating half-life AUM and participation-cap AUM per strategy from a validation JSON; produces a ranked, USD-formatted capacity table.
 - **Packaging** — `pyproject.toml` with `signalforge` / `sf` console scripts, declared dependencies, `[dev]` and `[tearsheet]` extras, ruff / black / pytest / mypy configuration.
 - **`Makefile`** with targets for install, format, lint, type-check, test, coverage, scan, validate, factory, backtest, status, report, tearsheet.
 - **Backtester invariant tests** (`tests/test_backtest_invariants.py`, 13 deterministic cases) — no-lookahead, reproducibility, cost monotonicity, warmup gating, equity bounds, win-rate bounds.
@@ -20,6 +25,7 @@ where practical for research software.
 
 ### Changed
 - Trimmed runtime artifacts from version control to keep the repo reproducible and lean.
+- `[dev]` extras now include `pre-commit` and `detect-secrets`.
 
 ---
 

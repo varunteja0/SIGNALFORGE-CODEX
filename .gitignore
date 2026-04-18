@@ -67,6 +67,7 @@ fund_data/deployed_strategies/
 # --- Reporting output (regenerate with `make tearsheet`) ----------------
 fund_data/tearsheet.html
 fund_data/*.html
+fund_data/registry.ndjson
 
 # --- Validation / sweep artifacts (output of research runs) -------------
 fund_data/validation_*.json
