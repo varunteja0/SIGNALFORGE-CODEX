@@ -425,6 +425,115 @@ def evaluate_strategy(
     )
 
 
+# =====================================================================
+# Walk-forward stability gate
+# =====================================================================
+
+def _apply_walk_forward_gate(
+    keep_reports: list,
+    deployed_strategies: list,
+    datasets_full: dict,
+    n_windows: int = 5,
+    train_fraction: float = 0.50,
+    min_positive_windows: int = 3,
+    max_sharpe_spread: float = 3.0,
+) -> int:
+    """Stress-test KEEP strategies across N non-overlapping OOS windows
+    carved from the last (1 - train_fraction) of full history.
+
+    A KEEP is STABLE if sharpes show >= min_positive_windows positive
+    values AND (max - min) <= max_sharpe_spread. Otherwise it is
+    downgraded to CONDITIONAL in-place and a kill_reason appended.
+
+    Returns the number of strategies downgraded.
+    """
+    if not keep_reports:
+        return 0
+
+    strat_by_name = {s.name: s for s in deployed_strategies}
+
+    windows_by_asset: dict = {}
+    oos_starts_by_asset: dict = {}
+    for asset, df in datasets_full.items():
+        n = len(df)
+        train_end = int(n * train_fraction)
+        remaining = n - train_end
+        if remaining < n_windows * 200:
+            windows_by_asset[asset] = []
+            oos_starts_by_asset[asset] = []
+            continue
+        window_len = remaining // n_windows
+        wins, starts = [], []
+        for i in range(n_windows):
+            oos_end = train_end + (i + 1) * window_len if i < n_windows - 1 else n
+            wins.append(df.iloc[:oos_end].copy())
+            starts.append(train_end + i * window_len)
+        windows_by_asset[asset] = wins
+        oos_starts_by_asset[asset] = starts
+
+    downgraded = 0
+    for report in keep_reports:
+        strat = strat_by_name.get(report.name)
+        if strat is None:
+            continue
+        wins = windows_by_asset.get(strat.asset, [])
+        starts = oos_starts_by_asset.get(strat.asset, [])
+        if not wins:
+            continue
+
+        sharpes = []
+        for win_df, oos_idx in zip(wins, starts):
+            try:
+                bt_w = Backtester(
+                    initial_capital=10_000,
+                    commission_pct=0.0005,
+                    slippage_pct=0.0005,
+                )
+                wr = bt_w.run(
+                    win_df, strat.generate_signals,
+                    position_size_pct=strat.position_size_pct,
+                    stop_loss_atr=strat.stop_loss_atr,
+                    take_profit_atr=strat.take_profit_atr,
+                    max_holding_bars=strat.hold_bars,
+                )
+                eq = getattr(wr, "equity_curve", None)
+                if eq is None or eq.empty or oos_idx >= len(win_df):
+                    sharpes.append(0.0)
+                    continue
+                oos_start_ts = win_df.index[oos_idx]
+                oos_eq = eq[eq.index >= oos_start_ts]
+                if len(oos_eq) < 2:
+                    sharpes.append(0.0)
+                    continue
+                rets = oos_eq.pct_change().dropna()
+                sigma = rets.std()
+                if sigma <= 0:
+                    sharpes.append(0.0)
+                    continue
+                sharpes.append(float(rets.mean() / sigma * np.sqrt(24 * 365)))
+            except Exception as exc:
+                logger.warning("walk-forward window failed for %s: %s", strat.name, exc)
+                sharpes.append(0.0)
+
+        if not sharpes:
+            continue
+
+        pos = sum(1 for s in sharpes if s > 0)
+        spread = max(sharpes) - min(sharpes)
+        stable = pos >= min_positive_windows and spread <= max_sharpe_spread
+
+        report.kill_reasons = list(report.kill_reasons) + [
+            f"walk_forward: pos={pos}/{len(sharpes)} "
+            f"sharpes={[round(s, 2) for s in sharpes]} "
+            f"spread={spread:.2f} {'STABLE' if stable else 'REGIME_LUCKY'}"
+        ]
+        if not stable:
+            report.final_verdict = "CONDITIONAL"
+            downgraded += 1
+
+    return downgraded
+
+
 def _empty_strategy_report(strat, reason: str, detail: str = "") -> StrategyReport:
     return StrategyReport(
         name=strat.name, asset=strat.asset, direction=strat.direction,
@@ -807,6 +916,24 @@ def run_validation(
               f"{report.oos_sharpe:>7.2f} "
               f"{report.oos_max_dd*100:>5.1f}% "
               f"{report.final_verdict:>10s}")
+
+    # ---- 5b. Walk-forward stability gate ----
+    # Even strategies that pass the single-OOS gate can be regime-lucky:
+    # a 30% OOS slice samples just one macro regime. We carve the last
+    # 50% of the full dataset into 5 non-overlapping windows and require
+    # that any KEEP shows positive-Sharpe behavior in at least 3 of them
+    # AND max-min Sharpe spread <= 3.0. Strategies that fail are
+    # downgraded to CONDITIONAL with a documented reason — they work,
+    # but their edge is regime-specific and must be monitored live.
+    print(f"\n  Walk-forward stability check (5 windows)...")
+    wf_downgrades = _apply_walk_forward_gate(
+        [r for r in strategy_reports if r.final_verdict == "KEEP"],
+        deployed, datasets_full,
+    )
+    if wf_downgrades:
+        print(f"    {wf_downgrades} KEEP → CONDITIONAL (regime-lucky)")
+    else:
+        print(f"    all KEEPs stable across 5 windows")
 
     # ---- Portfolio metrics ----
     port = compute_portfolio_metrics(strategy_reports, datasets_oos)

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.signalforge.paper_trader</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/varunteja/SignalForge/.venv/bin/python</string>
+        <string>/Users/varunteja/SignalForge/scripts/paper_trade_v20.py</string>
+        <string>--report</string>
+        <string>/Users/varunteja/SignalForge/fund_data/validation_v20.json</string>
+        <string>--capital</string>
+        <string>10000</string>
+        <string>--venue</string>
+        <string>binance</string>
+        <string>--log-level</string>
+        <string>INFO</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/varunteja/SignalForge</string>
+
+    <!-- Run at the top of every hour. Strategies use 1h bars; this
+         aligns execution with bar-close + 1 minute to allow exchange
+         to publish the completed candle. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Minute</key>
+        <integer>1</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/varunteja/SignalForge/fund_data/logs/paper_trader.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/varunteja/SignalForge/fund_data/logs/paper_trader.err.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>KeepAlive</key>
+    <false/>
+</dict>
+</plist>
