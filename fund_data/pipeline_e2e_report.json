@@ -1,0 +1,202 @@
+{
+  "generated_at": "2026-04-18T06:43:42.060874+00:00",
+  "research_source": "fund_data/research_report.json",
+  "holdout_fraction": 0.2,
+  "qty_usd": 10000.0,
+  "per_strategy": {
+    "BTC_USDT::mom_long_1": {
+      "symbol": "BTC/USDT",
+      "hypothesis": "mom_long_1",
+      "n_trades": 1000,
+      "realised_pnl": -19242.853861374213,
+      "sharpe_net": -10.459874115651566,
+      "equity_end": 80757.14613862579
+    },
+    "BTC_USDT::mom_long_2": {
+      "symbol": "BTC/USDT",
+      "hypothesis": "mom_long_2",
+      "n_trades": 271,
+      "realised_pnl": -4949.152291376315,
+      "sharpe_net": -4.790366473003288,
+      "equity_end": 95050.84770862368
+    },
+    "BTC_USDT::mom_short_2": {
+      "symbol": "BTC/USDT",
+      "hypothesis": "mom_short_2",
+      "n_trades": 259,
+      "realised_pnl": -3656.126269721193,
+      "sharpe_net": -3.150148103627811,
+      "equity_end": 96343.8737302788
+    },
+    "ETH_USDT::mom_short_1p5": {
+      "symbol": "ETH/USDT",
+      "hypothesis": "mom_short_1p5",
+      "n_trades": 512,
+      "realised_pnl": -6346.598050810664,
+      "sharpe_net": -2.861500313268743,
+      "equity_end": 93653.40194918934
+    },
+    "ETH_USDT::mom_long_2": {
+      "symbol": "ETH/USDT",
+      "hypothesis": "mom_long_2",
+      "n_trades": 242,
+      "realised_pnl": -3041.707506364069,
+      "sharpe_net": -2.107396743570515,
+      "equity_end": 96958.29249363593
+    },
+    "ETH_USDT::mom_short_2": {
+      "symbol": "ETH/USDT",
+      "hypothesis": "mom_short_2",
+      "n_trades": 248,
+      "realised_pnl": -3848.5935564835663,
+      "sharpe_net": -2.334875580020529,
+      "equity_end": 96151.40644351643
+    },
+    "SOL_USDT::mom_long_1p5": {
+      "symbol": "SOL/USDT",
+      "hypothesis": "mom_long_1p5",
+      "n_trades": 199,
+      "realised_pnl": -4259.196829488554,
+      "sharpe_net": -4.3453674752692075,
+      "equity_end": 95740.80317051144
+    },
+    "SOL_USDT::volexp_long_2": {
+      "symbol": "SOL/USDT",
+      "hypothesis": "volexp_long_2",
+      "n_trades": 176,
+      "realised_pnl": -3121.936153305269,
+      "sharpe_net": -2.553319155638061,
+      "equity_end": 96878.06384669473
+    },
+    "SOL_USDT::bo_long_0p04": {
+      "symbol": "SOL/USDT",
+      "hypothesis": "bo_long_0p04",
+      "n_trades": 28,
+      "realised_pnl": -255.50172727670585,
+      "sharpe_net": -0.7456344188811256,
+      "equity_end": 99744.4982727233
+    }
+  },
+  "attribution": {
+    "n_trades": 2935,
+    "total_realised": -48721.66624620055,
+    "total_signal": 13732.336479903208,
+    "total_slippage": 33160.948609561805,
+    "total_impact": 0.0,
+    "total_fee": 29293.05411654195,
+    "total_funding": 0.0,
+    "total_drift": 4.733990977001667e-13,
+    "per_strategy": {
+      "bo_long_0p04": {
+        "n": 28,
+        "realised": -255.50172727670596,
+        "signal": 534.1683353859452,
+        "slippage": 509.4029784949581,
+        "fee": 280.267084167693,
+        "funding": 0.0,
+        "drift": 5.595524044110789e-14
+      },
+      "mom_long_1": {
+        "n": 1000,
+        "realised": -19242.85386137422,
+        "signal": 1037.7939010714106,
+        "slippage": 10280.128865495095,
+        "fee": 10000.518896950534,
+        "funding": 0.0,
+        "drift": -7.105427357601002e-14
+      },
+      "mom_long_1p5": {
+        "n": 199,
+        "realised": -4259.196829488552,
+        "signal": 1853.7962606275184,
+        "slippage": 4155.765369287963,
+        "fee": 1957.2277208281075,
+        "funding": 0.0,
+        "drift": 1.7763568394002505e-15
+      },
+      "mom_long_2": {
+        "n": 513,
+        "realised": -7990.859797740382,
+        "signal": 2035.4543336236238,
+        "slippage": 4895.296404197194,
+        "fee": 5131.017727166813,
+        "funding": 0.0,
+        "drift": -2.398081733190338e-14
+      },
+      "mom_short_1p5": {
+        "n": 512,
+        "realised": -6346.598050810659,
+        "signal": 3903.58795826713,
+        "slippage": 5132.137803056922,
+        "fee": 5118.048206020867,
+        "funding": 0.0,
+        "drift": 2.1760371282653068e-13
+      },
+      "mom_short_2": {
+        "n": 507,
+        "realised": -7504.719826204757,
+        "signal": 2304.745696222011,
+        "slippage": 4740.617895274878,
+        "fee": 5068.847627151888,
+        "funding": 0.0,
+        "drift": 7.283063041541027e-14
+      },
+      "volexp_long_2": {
+        "n": 176,
+        "realised": -3121.9361533052697,
+        "signal": 2062.789994705571,
+        "slippage": 3447.5992937547935,
+        "fee": 1737.1268542560476,
+        "funding": 0.0,
+        "drift": 2.2026824808563106e-13
+      }
+    },
+    "per_asset": {
+      "BTC/USDT": {
+        "n": 1530,
+        "realised": -27848.132422471732,
+        "signal": 2673.1216639933637,
+        "slippage": 15221.220270375281,
+        "fee": 15300.03381608981,
+        "funding": 0.0,
+        "drift": -1.0036416142611415e-13
+      },
+      "ETH/USDT": {
+        "n": 1002,
+        "realised": -13236.89911365829,
+        "signal": 6608.460225190811,
+        "slippage": 9826.960697648807,
+        "fee": 10018.398641200292,
+        "funding": 0.0,
+        "drift": 2.957634137601417e-13
+      },
+      "SOL/USDT": {
+        "n": 403,
+        "realised": -7636.634710070528,
+        "signal": 4450.754590719035,
+        "slippage": 8112.767641537714,
+        "fee": 3974.621659251848,
+        "funding": 0.0,
+        "drift": 2.779998453661392e-13
+      }
+    }
+  },
+  "router": {
+    "context": {
+      "zmom_20": -0.3940589469902519,
+      "vol_ratio": 0.3970179273484011,
+      "range_ratio": 0.35327953827268593
+    },
+    "weights": {
+      "BTC_USDT::mom_long_1": 0.10778266712806882,
+      "BTC_USDT::mom_long_2": 0.10901243578445702,
+      "BTC_USDT::mom_short_2": 0.12003160397747692,
+      "ETH_USDT::mom_short_1p5": 0.12106700265628605,
+      "ETH_USDT::mom_long_2": 0.10690112364491326,
+      "ETH_USDT::mom_short_2": 0.12317815228980031,
+      "SOL_USDT::mom_long_1p5": 0.10542458721153287,
+      "SOL_USDT::volexp_long_2": 0.10325426454183799,
+      "SOL_USDT::bo_long_0p04": 0.10334816276562672
+    }
+  }
+}
