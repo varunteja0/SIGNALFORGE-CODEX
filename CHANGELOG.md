@@ -9,6 +9,11 @@ where practical for research software.
 ## [Unreleased]
 
 ### Added
+- **Packaging** — `pyproject.toml` with `signalforge` / `sf` console scripts, declared dependencies, `[dev]` and `[tearsheet]` extras, ruff / black / pytest / mypy configuration.
+- **`Makefile`** with targets for install, format, lint, type-check, test, coverage, scan, validate, factory, backtest, status, report, tearsheet.
+- **Backtester invariant tests** (`tests/test_backtest_invariants.py`, 13 deterministic cases) — no-lookahead, reproducibility, cost monotonicity, warmup gating, equity bounds, win-rate bounds.
+- **Tearsheet generator** (`src/reporting/tearsheet.py`) — standalone HTML with embedded charts, produced from the latest validation JSON via `make tearsheet`.
+- **Dependabot** configuration (`.github/dependabot.yml`) for weekly pip and monthly GitHub Actions updates, grouped by dependency type.
 - Professional repository documentation: `README.md`, `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`.
 - Issue and pull-request templates under `.github/`.
 - Hardened `.gitignore` — regenerable artifacts (validation sweeps, cached OHLCV, fund runtime state) are no longer tracked.

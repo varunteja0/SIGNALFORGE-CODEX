@@ -138,10 +138,26 @@ cd SignalForge
 
 python3.11 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+
+# Install as an editable package with dev + tearsheet extras
+pip install -e ".[dev,tearsheet]"
 
 # Sanity check — lists every available subcommand
+signalforge --help
+# or equivalently
 python sf.py --help
+```
+
+A `Makefile` wraps the common workflows:
+
+```bash
+make help        # list every target
+make install     # editable install with dev extras
+make test        # pytest
+make lint        # ruff + black --check
+make scan        # signal scan
+make validate    # full OOS validation suite
+make tearsheet   # render fund_data/tearsheet.html
 ```
 
 Optional `.env` for live keys (never commit):
@@ -239,11 +255,14 @@ All runtime knobs live in [`config/settings.yaml`](config/settings.yaml). Calibr
 ## Testing
 
 ```bash
-pytest tests/ -q
+make test          # pytest tests/ -q
+make test-fast     # skip slow + network markers
+make cov           # coverage report
 ```
 
 The suite covers:
 
+- **Backtester invariants** (`test_backtest_invariants.py`) — no-lookahead, reproducibility, cost monotonicity, warmup gating, non-negative equity
 - Core unit tests (`test_v2.py`)
 - Integration tests (`test_v2_integration.py`)
 - Factory pipeline (`test_factory.py`)

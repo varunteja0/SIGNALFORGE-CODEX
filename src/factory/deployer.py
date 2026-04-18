@@ -27,6 +27,93 @@ logger = logging.getLogger("factory.deployer")
 DEPLOY_DIR = Path("fund_data/deployed_strategies")
 
 
+# ─── Orthogonal signal families (inline, not scanner-discovered) ────────
+# These overlays supply return streams uncorrelated with classic breakout
+# trend-following. They deploy universally on every observed asset and
+# are measured honestly in OOS by the harness.
+
+def _session_momentum_signals(
+    df: pd.DataFrame, signal_name: str, direction: int
+) -> pd.Series:
+    """Session-boundary momentum.
+
+    Well-documented crypto structural effect: overnight moves in the
+    Asia session tend to *extend* through the US session (attention
+    arrival, retail follow-through). We enter at US-session open
+    (16:00 UTC) in the direction of the preceding 8h session return
+    when it exceeds a threshold, and hold for the configured bars.
+
+    Variant names:
+      session_mom_long_h8   — enter long at 16:00 UTC if prior 8h > +0.5%
+      session_mom_short_h8  — enter short at 16:00 UTC if prior 8h < -0.5%
+      session_mom_long_h24  — same trigger, 24h hold (carry the move)
+      session_mom_short_h24
+    """
+    signals = pd.Series(0, index=df.index)
+    if not isinstance(df.index, pd.DatetimeIndex) or len(df) < 24:
+        return signals
+
+    # Parse entry window length from name ("h8" or "h24")
+    entry_hour = 16  # US session open UTC
+    sess_return = df["close"].pct_change(8)
+    hours = df.index.hour
+    trigger_bar = (hours == entry_hour)
+
+    threshold = 0.005  # 0.5% minimum 8h move to qualify
+    if direction > 0:
+        mask = trigger_bar & (sess_return > threshold)
+    else:
+        mask = trigger_bar & (sess_return < -threshold)
+
+    signals[mask] = direction
+    return signals.astype(int)
+
+
+def _crowding_mr_signals(
+    df: pd.DataFrame, signal_name: str, direction: int
+) -> pd.Series:
+    """Crowding / capitulation mean-reversion.
+
+    Price-based proxy for "leverage washout": an extreme N-bar move
+    combined with RSI extreme indicates crowded positioning about to
+    unwind. Fade the move.
+
+    This is the public-data substitute for true funding-rate MR
+    (which requires per-bar funding snapshots the pipeline doesn't
+    currently ingest). Empirically correlated but noisier; lower
+    position size compensates.
+
+    Variant names:
+      crowding_mr_long_h12   — 3-day drop > 10% AND RSI14 < 25 -> long
+      crowding_mr_short_h12  — 3-day rise > 12% AND RSI14 > 75 -> short
+      crowding_mr_long_h24 / crowding_mr_short_h24 — same, slower hold
+    """
+    signals = pd.Series(0, index=df.index)
+    if len(df) < 100:
+        return signals
+
+    # 3-day = 72 bars on 1h timeframe
+    move_3d = df["close"].pct_change(72)
+
+    # RSI(14)
+    delta = df["close"].diff()
+    gain = delta.where(delta > 0, 0).rolling(14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+    rs = gain / loss.replace(0, np.nan)
+    rsi = 100 - (100 / (1 + rs))
+
+    if direction > 0:
+        # Fade extreme drop
+        mask = (move_3d < -0.10) & (rsi < 25)
+    else:
+        # Fade extreme rise
+        mask = (move_3d > 0.12) & (rsi > 75)
+
+    mask = mask.fillna(False)
+    signals[mask] = direction
+    return signals.astype(int)
+
+
 @dataclass
 class DeployedStrategy:
     """A strategy ready for live trading."""
@@ -79,15 +166,32 @@ class DeployedStrategy:
                     signals[mask] = direction
         else:
             # Classical single-family signal — reconstruct from generators.
-            for gen in SIGNAL_GENERATORS:
-                sigs = gen(df)
-                for sig_name, mask, direction in sigs:
-                    full_name = f"{sig_name}_h{self.hold_bars}"
-                    if full_name == self.signal_name:
-                        signals[mask] = direction
+            # Check new inline families first (session momentum, crowding
+            # mean-reversion) — these don't live in SIGNAL_GENERATORS
+            # because they're deterministic overlays, not scanner
+            # hypotheses.
+            matched = False
+            if self.signal_name.startswith("session_mom_"):
+                signals = _session_momentum_signals(
+                    df, self.signal_name, self.direction
+                )
+                matched = (signals != 0).any()
+            elif self.signal_name.startswith("crowding_mr_"):
+                signals = _crowding_mr_signals(
+                    df, self.signal_name, self.direction
+                )
+                matched = (signals != 0).any()
+
+            if not matched:
+                for gen in SIGNAL_GENERATORS:
+                    sigs = gen(df)
+                    for sig_name, mask, direction in sigs:
+                        full_name = f"{sig_name}_h{self.hold_bars}"
+                        if full_name == self.signal_name:
+                            signals[mask] = direction
+                            break
+                    if (signals != 0).any():
                         break
-                if (signals != 0).any():
-                    break
 
         # ── Regime filter ──────────────────────────────────────────
         # Percentile-based thresholds adapt automatically to each asset's
@@ -98,7 +202,16 @@ class DeployedStrategy:
         # Shorts are killed in the bull bucket; longs are killed in bear.
         # This replaces the fixed 0.5·σ multiplier that disqualified BTC
         # entirely (its trend dispersion is too narrow for 0.5·σ to fire).
-        if (signals != 0).any() and len(df) >= 200:
+        #
+        # SKIPPED for mean-reversion families: crowding_mr fires INTO a
+        # move expecting reversal, so a bull/bear regime gate would
+        # defeat its purpose.
+        is_mean_reversion = self.signal_name.startswith("crowding_mr_")
+        if (
+            not is_mean_reversion
+            and (signals != 0).any()
+            and len(df) >= 200
+        ):
             trend = df["close"].pct_change(200)
             if trend.dropna().size >= 100:
                 bull_thr = float(trend.quantile(0.60))
@@ -240,6 +353,29 @@ def deploy(
             24,
         ))
 
+    # ── Orthogonal families — session momentum + crowding MR ──────
+    # These are return streams structurally uncorrelated with breakout
+    # TF. Session momentum captures intraday attention-flow; crowding
+    # MR captures capitulation / leverage-flush. Both deploy on every
+    # asset; the harness kills the ones that don't survive OOS.
+    session_configs = []
+    for hold in (8, 24):
+        for direction_suffix, direction in (("long", 1), ("short", -1)):
+            session_configs.append((
+                f"session_mom_{direction_suffix}_h{hold}",
+                direction,
+                hold,
+            ))
+
+    crowding_configs = []
+    for hold in (12, 24):
+        for direction_suffix, direction in (("long", 1), ("short", -1)):
+            crowding_configs.append((
+                f"crowding_mr_{direction_suffix}_h{hold}",
+                direction,
+                hold,
+            ))
+
     for asset in sorted(seen_assets):
         for name, direction, hold in tf_configs:
             deployed.append(
@@ -256,6 +392,42 @@ def deploy(
                     take_profit_atr=5.0,
                     oos_pf=1.2,  # nominal prior — true OOS measured by harness
                     oos_sharpe=0.5,
+                    grade="B",
+                    deployed_at=now,
+                )
+            )
+        for name, direction, hold in session_configs:
+            deployed.append(
+                DeployedStrategy(
+                    name=f"sf_sm_{name}_{asset.split('/')[0]}",
+                    asset=asset,
+                    direction=direction,
+                    hold_bars=hold,
+                    signal_name=name,
+                    position_size_pct=0.006,  # smaller — thinner signal
+                    stop_loss_atr=2.0,
+                    take_profit_atr=3.5,
+                    oos_pf=1.1,
+                    oos_sharpe=0.3,
+                    grade="B",
+                    deployed_at=now,
+                )
+            )
+        for name, direction, hold in crowding_configs:
+            deployed.append(
+                DeployedStrategy(
+                    name=f"sf_mr_{name}_{asset.split('/')[0]}",
+                    asset=asset,
+                    direction=direction,
+                    hold_bars=hold,
+                    signal_name=name,
+                    # Mean-reversion sizes up slightly — low trade count
+                    # but structurally uncorrelated payoff.
+                    position_size_pct=0.010,
+                    stop_loss_atr=2.0,
+                    take_profit_atr=3.0,
+                    oos_pf=1.2,
+                    oos_sharpe=0.4,
                     grade="B",
                     deployed_at=now,
                 )

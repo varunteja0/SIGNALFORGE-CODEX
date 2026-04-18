@@ -1,0 +1,149 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "signalforge"
+version = "4.1.0"
+description = "Autonomous crypto quantitative trading system — GP alpha factory, honest OOS validation, multi-strategy portfolio engine, multi-agent live execution."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+authors = [{ name = "Varun Teja" }]
+keywords = [
+    "quantitative-finance",
+    "algorithmic-trading",
+    "crypto",
+    "cryptocurrency",
+    "backtesting",
+    "genetic-programming",
+    "perpetual-futures",
+    "quant",
+    "risk-management",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Typing :: Typed",
+]
+dependencies = [
+    "ccxt>=4.0.0",
+    "pandas>=2.0.0",
+    "numpy>=1.24.0,<2.0.0",
+    "scipy>=1.10.0",
+    "scikit-learn>=1.3.0",
+    "ta>=0.11.0",
+    "websockets>=12.0",
+    "aiohttp>=3.9.0",
+    "python-dotenv>=1.0.0",
+    "rich>=13.0.0",
+    "plotly>=5.18.0",
+    "statsmodels>=0.14.0",
+    "requests>=2.31.0",
+    "pyarrow>=14.0.0",
+    "streamlit>=1.30.0",
+    "pyyaml>=6.0.0",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.27.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+    "hypothesis>=6.100",
+    "ruff>=0.4",
+    "black>=24.0",
+    "mypy>=1.10",
+]
+tearsheet = [
+    "matplotlib>=3.8",
+    "jinja2>=3.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/varunteja0/SignalForge"
+Repository = "https://github.com/varunteja0/SignalForge"
+Issues = "https://github.com/varunteja0/SignalForge/issues"
+Changelog = "https://github.com/varunteja0/SignalForge/blob/main/CHANGELOG.md"
+
+[project.scripts]
+signalforge = "sf:main"
+sf = "sf:main"
+
+# --- Packaging ------------------------------------------------------------
+[tool.setuptools]
+py-modules = ["sf"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+exclude = ["tests*", "research*", "_archive*", "notebooks*"]
+
+# --- Tools ----------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["_archive", "notebooks", "research"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+ignore = [
+    "E501",   # handled by formatter
+    "B008",   # function calls in default args (common in CLI)
+    "B904",   # raise from (noisy on legacy code paths)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402", "F401", "F811"]
+"sf.py" = ["E402"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311", "py312"]
+extend-exclude = "(_archive|notebooks|research)"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-q --strict-markers --disable-warnings"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+    "ignore::FutureWarning",
+]
+markers = [
+    "slow: marks tests that take >10s (deselect with '-m \"not slow\"')",
+    "network: marks tests that require network access",
+]
+
+[tool.coverage.run]
+source = ["src", "sf"]
+omit = ["tests/*", "research/*", "_archive/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_configs = true
+ignore_missing_imports = true
+# Only the trading-path modules are enforced strictly.
+# Everything else is loose — fix opportunistically.
+files = ["src/backtest", "src/risk", "src/fund"]
+strict = false
+disallow_untyped_defs = false
+warn_redundant_casts = true
+warn_unreachable = true

@@ -477,6 +477,65 @@ def compute_portfolio_metrics(strategy_reports: list, df_oos_by_asset: dict) -> 
             "portfolio_oos_max_dd": 0, "portfolio_mar": 0,
         }
 
+    # ── Correlation cluster caps ──────────────────────────────────
+    # When N strategies have pairwise OOS return correlation > 0.7 they
+    # form a cluster that behaves as ~1 strategy under stress. Cap each
+    # such cluster's aggregate weight at CLUSTER_CAP of the portfolio.
+    # This is the institutional-grade fix for "15 long-XRP variants
+    # dominate the book".
+    CLUSTER_THRESH = 0.7
+    CLUSTER_CAP = 0.35  # one correlated cluster can't exceed 35% of book
+
+    # Build raw bar-return series for correlation measurement.
+    raw_rets = {}
+    for s, _w, eq in members:
+        eq_clean = eq[~eq.index.duplicated(keep="last")].sort_index()
+        raw_rets[s.name] = eq_clean.pct_change().fillna(0)
+    raw_df = pd.DataFrame(raw_rets).fillna(0)
+
+    # Pairwise correlation (on common index)
+    clusters: list[list[int]] = []
+    if len(raw_df.columns) >= 2 and len(raw_df) >= 30:
+        corr = raw_df.corr()
+        assigned: set[int] = set()
+        names = list(raw_df.columns)
+        name_to_idx = {n: i for i, n in enumerate(names)}
+        for i, n_i in enumerate(names):
+            if i in assigned:
+                continue
+            cluster = [i]
+            assigned.add(i)
+            for j in range(i + 1, len(names)):
+                if j in assigned:
+                    continue
+                c = corr.iloc[i, j]
+                if pd.notna(c) and abs(c) >= CLUSTER_THRESH:
+                    cluster.append(j)
+                    assigned.add(j)
+            if len(cluster) > 1:
+                clusters.append(cluster)
+
+        # For each oversized cluster, scale its members' weights down so
+        # the cluster's share of total weight == CLUSTER_CAP.
+        member_names = [m[0].name for m in members]
+        weights = [m[1] for m in members]
+        total_w_tmp = sum(weights)
+        for cluster in clusters:
+            cluster_names = {names[idx] for idx in cluster}
+            cluster_idxs = [
+                k for k, mn in enumerate(member_names) if mn in cluster_names
+            ]
+            cluster_w = sum(weights[k] for k in cluster_idxs)
+            cluster_share = cluster_w / max(total_w_tmp, 1e-9)
+            if cluster_share > CLUSTER_CAP:
+                shrink = CLUSTER_CAP / cluster_share
+                for k in cluster_idxs:
+                    weights[k] *= shrink
+        # Rebuild members with adjusted weights
+        members = [
+            (s, weights[k], eq) for k, (s, _w, eq) in enumerate(members)
+        ]
+
     # Normalize weights to sum to 1.0
     total_w = sum(w for _, w, _ in members)
     # Convert each equity curve to periodic returns, then resample to a
@@ -528,6 +587,7 @@ def compute_portfolio_metrics(strategy_reports: list, df_oos_by_asset: dict) -> 
         "portfolio_oos_sharpe": port_sharpe,
         "portfolio_oos_max_dd": port_dd,
         "portfolio_mar": float(mar),
+        "n_correlation_clusters": len(clusters),
     }
 
 
@@ -673,6 +733,34 @@ def run_validation(
     print(f"\n[4/5] Deploying top strategies...")
     deployed = deploy(val_result.validated, max_strategies=10)
     print(f"  Deployed: {len(deployed)}")
+
+    # ── Volatility-targeted baseline sizing ──────────────────────
+    # Each strategy's baseline position_size_pct is scaled so that
+    # notional risk is consistent across assets. We measure 90d (2160-bar
+    # on 1h) realized volatility of the SCAN window and scale:
+    #
+    #     new_size = baseline × (target_vol / realized_vol)
+    #     clipped to [0.5×, 2.0×] of baseline
+    #
+    # Target vol: 60% annualized (crypto baseline; BTC ~50%, DOGE ~110%).
+    # Effect: high-vol assets (DOGE, XRP) get smaller size, low-vol
+    # assets (BTC) get larger — equalizing dollar risk per trade.
+    TARGET_ANN_VOL = 0.60
+    BARS_PER_YEAR_1H = 24 * 365  # ~8760
+    for strat in deployed:
+        df_is = datasets_is.get(strat.asset)
+        if df_is is None or len(df_is) < 500:
+            continue
+        recent = df_is.iloc[-2160:] if len(df_is) >= 2160 else df_is
+        bar_rets = recent["close"].pct_change().dropna()
+        if bar_rets.empty or bar_rets.std() <= 0:
+            continue
+        realized_vol = float(bar_rets.std() * np.sqrt(BARS_PER_YEAR_1H))
+        if realized_vol <= 0:
+            continue
+        vol_scale = TARGET_ANN_VOL / realized_vol
+        vol_scale = max(0.5, min(2.0, vol_scale))
+        strat.position_size_pct = float(strat.position_size_pct * vol_scale)
 
     # ---- 5. Evaluate on TRUE OOS (never-seen data) ----
     print(f"\n[5/5] Evaluating on true out-of-sample data...")

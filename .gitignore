@@ -64,6 +64,10 @@ fund_data/autopsies/
 fund_data/outcome_runs/
 fund_data/deployed_strategies/
 
+# --- Reporting output (regenerate with `make tearsheet`) ----------------
+fund_data/tearsheet.html
+fund_data/*.html
+
 # --- Validation / sweep artifacts (output of research runs) -------------
 fund_data/validation_*.json
 fund_data/csfc_*.json
