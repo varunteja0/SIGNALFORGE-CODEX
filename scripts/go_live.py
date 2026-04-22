@@ -1269,6 +1269,8 @@ class LiveTrader:
                 metadata={"reasons": list(cycle_state.safety_reasons)},
             )
             self._print_status(datasets)
+            if self.paper_mode:
+                self._update_paper_validation_status()
             self._save_market_snapshot(
                 datasets,
                 append_history=False,
@@ -1473,6 +1475,7 @@ class LiveTrader:
         """Log how close each strategy×asset is to triggering — for operational visibility."""
         lines = ["  Signal proximity (no signals this tick):"]
         for slot in self.slots:
+            base_name = self._base_strategy_name(slot.name)
             best_sym, best_pct, best_detail = None, 0.0, ""
             for sym in slot.allowed_assets:
                 if sym not in datasets:
@@ -1480,11 +1483,11 @@ class LiveTrader:
                 df = datasets[sym]
                 pct, detail = 0.0, ""
                 try:
-                    if slot.name == "funding_mr_v7":
+                    if base_name == "funding_mr_v7":
                         z = abs(float(df["fund_funding_zscore"].iloc[-1])) if "fund_funding_zscore" in df.columns else 0
                         pct = min(z / 3.0, 1.0)
                         detail = f"z={z:.1f}/3.0"
-                    elif slot.name == "extreme_spike":
+                    elif base_name == "extreme_spike":
                         z = abs(float(df["fund_funding_zscore"].iloc[-1])) if "fund_funding_zscore" in df.columns else 0
                         pct = min(z / 4.0, 1.0) * 0.7  # z is 70% of requirement
                         regime = str(df.get("regime", pd.Series([""])).iloc[-1]) if "regime" in df.columns else ""
@@ -1492,14 +1495,14 @@ class LiveTrader:
                         if regime_ok:
                             pct += 0.3
                         detail = f"z={z:.1f}/4.0 regime={'Y' if regime_ok else 'N'}"
-                    elif slot.name == "fund_vol_squeeze":
+                    elif base_name == "fund_vol_squeeze":
                         z = abs(float(df["fund_funding_zscore"].iloc[-1])) if "fund_funding_zscore" in df.columns else 0
                         bb_pctile = float(df["bb_width_20"].rank(pct=True).iloc[-1] * 100) if "bb_width_20" in df.columns else 100
                         z_pct = min(z / 1.5, 1.0) * 0.5
                         sq_pct = (1.0 if bb_pctile <= 15 else min(15.0 / max(bb_pctile, 1e-10), 1.0)) * 0.5
                         pct = z_pct + sq_pct
                         detail = f"z={z:.1f}/1.5 bb={bb_pctile:.0f}%ile"
-                    elif slot.name == "momentum_breakout":
+                    elif base_name == "momentum_breakout":
                         atr14 = df["atr_14"].iloc[-1] if "atr_14" in df.columns else 0
                         atr_ma = df["atr_14"].rolling(30).mean().iloc[-1] if "atr_14" in df.columns else 1
                         vol = df["volume"].iloc[-1] if "volume" in df.columns else 0
@@ -1508,7 +1511,7 @@ class LiveTrader:
                         vol_r = (vol / vol_ma) if vol_ma > 0 else 0
                         pct = (min(atr_r / 1.5, 1.0) * 0.5) + (min(vol_r / 1.3, 1.0) * 0.5)
                         detail = f"atr={atr_r:.1f}x/1.5x vol={vol_r:.1f}x/1.3x"
-                    elif slot.name == "contrarian_asym":
+                    elif base_name == "contrarian_asym":
                         z = float(df["fund_funding_zscore"].iloc[-1]) if "fund_funding_zscore" in df.columns else 0
                         pct = min(max(z / 2.0, 0), 1.0) if z > 0 else 0.0
                         detail = f"z={z:+.1f}/+2.0 (SHORT only)"

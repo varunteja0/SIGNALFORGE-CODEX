@@ -115,6 +115,7 @@ class HealthMonitor:
         self._last_heartbeat = time.time()
         self._trading_iterations = 0
         self._consecutive_errors = 0
+        self._counted_error_keys: set[str] = set()
         
         self._data_fetches: dict[str, dict] = {}   # symbol → {timestamp, success}
         self._executions: list[dict] = []            # Recent executions
@@ -128,6 +129,7 @@ class HealthMonitor:
         self._last_heartbeat = time.time()
         self._trading_iterations += 1
         self._consecutive_errors = 0  # Reset on successful iteration
+        self._counted_error_keys.clear()
     
     def record_data_fetch(self, symbol: str, success: bool, error: str = ""):
         """Record a data fetch attempt."""
@@ -137,7 +139,12 @@ class HealthMonitor:
             "error": error,
         }
         if not success:
-            self._record_error("data_fetch", f"{symbol}: {error}")
+            normalized_error = error.strip().lower() if error else "unknown"
+            self._record_error(
+                "data_fetch",
+                f"{symbol}: {error}",
+                dedupe_key=f"data_fetch:{normalized_error}",
+            )
     
     def record_execution(
         self,
@@ -491,9 +498,12 @@ class HealthMonitor:
     # Internal Helpers
     # ================================================================
     
-    def _record_error(self, source: str, error: str):
+    def _record_error(self, source: str, error: str, *, dedupe_key: str | None = None):
         """Record an error."""
-        self._consecutive_errors += 1
+        if dedupe_key is None or dedupe_key not in self._counted_error_keys:
+            self._consecutive_errors += 1
+            if dedupe_key is not None:
+                self._counted_error_keys.add(dedupe_key)
         self._errors.append({
             "timestamp": time.time(),
             "source": source,
