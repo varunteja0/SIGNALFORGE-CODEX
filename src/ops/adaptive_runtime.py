@@ -97,7 +97,11 @@ class AdaptiveSafetyGovernor:
                 f"edge retention {cycle_state.edge_retention_ratio:.2f} < {self.edge_retention_floor:.2f}"
             )
 
-        if cycle_state.volatility_tracking_error > self.max_tracking_error:
+        volatility_overshoot = max(
+            float(cycle_state.realized_volatility),
+            float(cycle_state.smoothed_volatility),
+        ) > float(cycle_state.target_volatility)
+        if volatility_overshoot and cycle_state.volatility_tracking_error > self.max_tracking_error:
             pause_reasons.append(
                 f"tracking error {cycle_state.volatility_tracking_error:.3f} > {self.max_tracking_error:.3f}"
             )

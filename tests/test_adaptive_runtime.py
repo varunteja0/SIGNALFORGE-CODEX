@@ -157,3 +157,70 @@ def test_adaptive_safety_governor_reduces_under_objective_and_corr_stress() -> N
     assert decision.action == "reduce"
     assert decision.size_cap == 0.5
     assert len(decision.reasons) >= 1
+
+
+def test_adaptive_safety_governor_allows_low_volatility_undershoot() -> None:
+    state = TradingCycleState(
+        iteration=13,
+        timestamp="2026-04-22T03:01:45+00:00",
+        paper_mode=True,
+        capital=10_000.0,
+        current_drawdown=0.0,
+        daily_pnl=0.0,
+        projected_utilization=0.0,
+        gross_exposure_scale=1.75,
+        risk_budget_multiplier=1.6,
+        target_volatility=0.15,
+        realized_volatility=0.0030618997970943895,
+        smoothed_volatility=0.0030618997970943895,
+        volatility_tracking_error=0.1469381002029056,
+        pid_output=1.4204016352947542,
+        edge_retention_ratio=0.9090046425304488,
+        edge_retention_state="strong",
+        reality_gap_fraction=0.09099535746955123,
+        portfolio_objective_score=0.12,
+        correlation_shock=False,
+        execution={
+            "avg_entry_slippage_bps": 0.0,
+            "avg_pnl_divergence_pct": 0.0,
+        },
+    )
+
+    decision = AdaptiveSafetyGovernor().evaluate(state)
+
+    assert decision.action == "allow"
+    assert decision.size_cap == 1.0
+    assert decision.reasons == []
+
+
+def test_adaptive_safety_governor_pauses_on_large_volatility_overshoot() -> None:
+    state = TradingCycleState(
+        iteration=14,
+        timestamp="2026-04-22T04:01:45+00:00",
+        paper_mode=True,
+        capital=10_000.0,
+        current_drawdown=0.0,
+        daily_pnl=0.0,
+        projected_utilization=0.6,
+        gross_exposure_scale=1.0,
+        risk_budget_multiplier=1.0,
+        target_volatility=0.15,
+        realized_volatility=0.29,
+        smoothed_volatility=0.24,
+        volatility_tracking_error=0.14,
+        pid_output=-0.8,
+        edge_retention_ratio=0.90,
+        edge_retention_state="strong",
+        reality_gap_fraction=0.02,
+        portfolio_objective_score=0.18,
+        correlation_shock=False,
+        execution={
+            "avg_entry_slippage_bps": 0.0,
+            "avg_pnl_divergence_pct": 0.0,
+        },
+    )
+
+    decision = AdaptiveSafetyGovernor().evaluate(state)
+
+    assert decision.action == "pause_entries"
+    assert any("tracking error" in reason for reason in decision.reasons)
