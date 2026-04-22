@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/Users/varunteja/SignalForge-codex/.tmp_fast_eval.py", line 238, in <module>
+    pos_map = {sym: trend_positions(arrays[sym], **params) for sym in symbols}
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/varunteja/SignalForge-codex/.tmp_fast_eval.py", line 238, in <dictcomp>
+    pos_map = {sym: trend_positions(arrays[sym], **params) for sym in symbols}
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: trend_positions() got an unexpected keyword argument 'exit'

@@ -1,0 +1,180 @@
+{
+  "n_trials": 567,
+  "top_5": [
+    {
+      "name": "xsmom_lb120_sm24_vw168_tv006_et25",
+      "family": "xsmom",
+      "params": {
+        "lookback": 120,
+        "smooth": 24,
+        "vol_window": 168,
+        "target_vol": 0.006,
+        "entry_threshold": 0.25,
+        "max_scale": 1.0
+      },
+      "score": 0.8115256800162398,
+      "is_sharpe": 1.8392604064258966,
+      "is_fold_sharpe_mean": 1.7224747608434399,
+      "is_fold_sharpe_min": -0.4179630539809026,
+      "is_fold_positive_frac": 0.6,
+      "is_sharpe_cost_1p5x": 1.6534199343264053,
+      "is_sharpe_cost_2x": 1.4675532852268613,
+      "is_max_drawdown": -0.07792116865044174,
+      "is_total_return": 0.32920231520152954,
+      "mean_turnover": 0.008810723637709822,
+      "max_weight": 0.5,
+      "weights": {
+        "BTC/USDT": 0.32005162913722296,
+        "ETH/USDT": 0.1799483708627771,
+        "SOL/USDT": 0.5
+      }
+    },
+    {
+      "name": "xsmom_lb120_sm24_vw168_tv006_et00",
+      "family": "xsmom",
+      "params": {
+        "lookback": 120,
+        "smooth": 24,
+        "vol_window": 168,
+        "target_vol": 0.006,
+        "entry_threshold": 0.0,
+        "max_scale": 1.0
+      },
+      "score": 0.8067008842828727,
+      "is_sharpe": 1.833150795833612,
+      "is_fold_sharpe_mean": 1.7156451898876863,
+      "is_fold_sharpe_min": -0.419330211923246,
+      "is_fold_positive_frac": 0.6,
+      "is_sharpe_cost_1p5x": 1.6472236475898037,
+      "is_sharpe_cost_2x": 1.4612729470896417,
+      "is_max_drawdown": -0.07933027527650016,
+      "is_total_return": 0.3286203314129672,
+      "mean_turnover": 0.008906918587870571,
+      "max_weight": 0.5,
+      "weights": {
+        "BTC/USDT": 0.32431279977030275,
+        "ETH/USDT": 0.1756872002296973,
+        "SOL/USDT": 0.5
+      }
+    },
+    {
+      "name": "xsmom_lb120_sm24_vw168_tv006_et50",
+      "family": "xsmom",
+      "params": {
+        "lookback": 120,
+        "smooth": 24,
+        "vol_window": 168,
+        "target_vol": 0.006,
+        "entry_threshold": 0.5,
+        "max_scale": 1.0
+      },
+      "score": 0.805225903607363,
+      "is_sharpe": 1.8211407339463375,
+      "is_fold_sharpe_mean": 1.7031514127732241,
+      "is_fold_sharpe_min": -0.39527742379869635,
+      "is_fold_positive_frac": 0.6,
+      "is_sharpe_cost_1p5x": 1.6346571931493863,
+      "is_sharpe_cost_2x": 1.4481439026304133,
+      "is_max_drawdown": -0.08017967458137798,
+      "is_total_return": 0.32441692938853617,
+      "mean_turnover": 0.00869823654460501,
+      "max_weight": 0.5,
+      "weights": {
+        "BTC/USDT": 0.3143115881464139,
+        "ETH/USDT": 0.18568841185358606,
+        "SOL/USDT": 0.5
+      }
+    },
+    {
+      "name": "xsmom_lb120_sm24_vw168_tv005_et25",
+      "family": "xsmom",
+      "params": {
+        "lookback": 120,
+        "smooth": 24,
+        "vol_window": 168,
+        "target_vol": 0.005,
+        "entry_threshold": 0.25,
+        "max_scale": 1.0
+      },
+      "score": 0.7337584266619552,
+      "is_sharpe": 1.7317547418349755,
+      "is_fold_sharpe_mean": 1.641311460872085,
+      "is_fold_sharpe_min": -0.48894241733724836,
+      "is_fold_positive_frac": 0.6,
+      "is_sharpe_cost_1p5x": 1.5298097591182171,
+      "is_sharpe_cost_2x": 1.3278744784354697,
+      "is_max_drawdown": -0.07216923076226489,
+      "is_total_return": 0.2583516553441023,
+      "mean_turnover": 0.008265925124965065,
+      "max_weight": 0.5,
+      "weights": {
+        "BTC/USDT": 0.3156564003183131,
+        "ETH/USDT": 0.1843435996816869,
+        "SOL/USDT": 0.5
+      }
+    },
+    {
+      "name": "xsmom_lb120_sm24_vw168_tv005_et00",
+      "family": "xsmom",
+      "params": {
+        "lookback": 120,
+        "smooth": 24,
+        "vol_window": 168,
+        "target_vol": 0.005,
+        "entry_threshold": 0.0,
+        "max_scale": 1.0
+      },
+      "score": 0.727487686999893,
+      "is_sharpe": 1.725502558604898,
+      "is_fold_sharpe_mean": 1.6343306904818526,
+      "is_fold_sharpe_min": -0.49558959751469983,
+      "is_fold_positive_frac": 0.6,
+      "is_sharpe_cost_1p5x": 1.5232391277281603,
+      "is_sharpe_cost_2x": 1.320990203458142,
+      "is_max_drawdown": -0.07344695908388532,
+      "is_total_return": 0.2577594985697822,
+      "mean_turnover": 0.008369009500625857,
+      "max_weight": 0.5,
+      "weights": {
+        "BTC/USDT": 0.32005377963276216,
+        "ETH/USDT": 0.17994622036723784,
+        "SOL/USDT": 0.5
+      }
+    }
+  ],
+  "best": {
+    "name": "xsmom_lb120_sm24_vw168_tv006_et25",
+    "family": "xsmom",
+    "params": {
+      "lookback": 120,
+      "smooth": 24,
+      "vol_window": 168,
+      "target_vol": 0.006,
+      "entry_threshold": 0.25,
+      "max_scale": 1.0
+    },
+    "score": 0.8115256800162398,
+    "is_sharpe": 1.8392604064258966,
+    "is_fold_sharpe_mean": 1.7224747608434399,
+    "is_fold_sharpe_min": -0.4179630539809026,
+    "is_fold_positive_frac": 0.6,
+    "is_sharpe_cost_1p5x": 1.6534199343264053,
+    "is_sharpe_cost_2x": 1.4675532852268613,
+    "is_max_drawdown": -0.07792116865044174,
+    "is_total_return": 0.32920231520152954,
+    "mean_turnover": 0.008810723637709822,
+    "max_weight": 0.5,
+    "weights": {
+      "BTC/USDT": 0.32005162913722296,
+      "ETH/USDT": 0.1799483708627771,
+      "SOL/USDT": 0.5
+    }
+  },
+  "gate_g1": {
+    "fold_sharpe_threshold": 1.17,
+    "cost_2x_threshold": 0.0,
+    "fold_sharpe_pass": true,
+    "cost_2x_pass": true,
+    "pass": true
+  }
+}

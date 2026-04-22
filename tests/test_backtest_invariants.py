@@ -135,6 +135,30 @@ def test_higher_commission_never_improves_pnl():
     assert high.total_return <= low.total_return + 1e-9
 
 
+def test_max_position_notional_cap_changes_realized_return_when_binding():
+    """A tighter notional cap must reduce returns when the same profitable
+    trades are taken under a strong long-biased tape.
+    """
+    df = _synthetic_ohlcv(seed=123, drift=0.003)
+    sig = _signal_every_n(120)
+
+    tight = Backtester(initial_capital=10_000).run(
+        df,
+        sig,
+        position_size_pct=0.50,
+        max_position_notional_pct=0.05,
+    )
+    loose = Backtester(initial_capital=10_000).run(
+        df,
+        sig,
+        position_size_pct=0.50,
+        max_position_notional_pct=0.50,
+    )
+
+    assert tight.total_trades == loose.total_trades > 0
+    assert loose.total_return > tight.total_return
+
+
 def test_no_lookahead_on_signal_shift():
     """Shifting signal forward by one bar must not preserve PnL.
 

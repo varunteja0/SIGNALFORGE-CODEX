@@ -1,0 +1,33 @@
+{
+  "generated_at": "2026-04-22T02:27:24.433723+00:00",
+  "operating_mode": "paper",
+  "enforced": false,
+  "deployment_allowed_mode": "shadow_live",
+  "decision": "no_trade",
+  "allow_new_entries": false,
+  "base_max_total_exposure_pct": 0.1,
+  "base_max_per_trade_pct": 0.02,
+  "max_total_exposure_pct": 0.0,
+  "max_per_trade_pct": 0.0,
+  "stress_hysteresis": 0.31090959451294975,
+  "stress_adversarial_intensity": 0.5084073743288243,
+  "collapse_probability": 0.3104597503705525,
+  "collapse_horizon_ticks": 6,
+  "execution_fidelity_score": 42.0,
+  "execution_fidelity_level": "unstable",
+  "execution_miss_rate": 0.0,
+  "avg_entry_slippage_bps": 0.0,
+  "avg_fill_ratio": 1.0,
+  "avg_book_spread_bps": 0.0,
+  "avg_book_impact_bps": 0.0,
+  "market_max_vol_ratio": 0.9034613911368133,
+  "market_max_atr_expansion": 1.2393526405451478,
+  "market_mean_abs_corr_48h": 0.8632209332968112,
+  "market_corr_shift_48h": 0.11967215432008782,
+  "market_dispersion_24h": 0.0013908760608992929,
+  "reasons": [
+    "Execution fidelity has degraded below the live-capital floor.",
+    "Adversarial field intensity remains elevated.",
+    "Execution fidelity is below the full-size threshold."
+  ]
+}

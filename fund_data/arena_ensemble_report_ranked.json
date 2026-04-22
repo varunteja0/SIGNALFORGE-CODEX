@@ -1,0 +1,229 @@
+{
+  "generated_at": "2026-04-19T10:12:32Z",
+  "n_trials": 270,
+  "selected": {
+    "spec": {
+      "name": "ens_ivol_2_corr70",
+      "family": "ensemble",
+      "params": {
+        "members": [
+          {
+            "family": "relative",
+            "params": {
+              "lookback": 120,
+              "smooth": 24,
+              "enter_spread": 0.65,
+              "exit_spread": 0.25,
+              "switch_buffer": 0.1,
+              "target_vol": 0.006
+            }
+          },
+          {
+            "family": "trend",
+            "params": {
+              "fast": 48,
+              "slow": 168,
+              "confirm": 72,
+              "enter": 0.65,
+              "exit": 0.15,
+              "target_vol": 0.006,
+              "vol_cap": 0.03
+            }
+          }
+        ],
+        "member_weights": [
+          0.6037399173130372,
+          0.39626008268696267
+        ]
+      },
+      "notes": "Inverse-vol ensemble of 2 uncorrelated refined candidates."
+    },
+    "weights": {
+      "BTC/USDT": 0.2659422180817278,
+      "ETH/USDT": 0.23405778191827223,
+      "SOL/USDT": 0.5
+    },
+    "score": 0.23963615621782774,
+    "portfolio_metrics": {
+      "is_sharpe": 0.7387675413083259,
+      "is_deflated_sharpe": 0.0,
+      "is_max_drawdown": -0.1310771101934941,
+      "is_total_return": 0.2421748441196161,
+      "is_fold_sharpe_mean": 0.7232275586167835,
+      "is_fold_sharpe_min": -0.358254098211695,
+      "is_fold_positive_frac": 0.8,
+      "is_fold_worst_drawdown": -0.13107711019349122,
+      "is_sharpe_cost_1p5x": 0.4787116801966776,
+      "is_sharpe_cost_2x": 0.21888282625956063,
+      "mean_turnover": 0.02529287654794937,
+      "max_gross": 0.8586899740981895,
+      "max_weight": 0.5
+    },
+    "symbol_metrics": {
+      "BTC/USDT": {
+        "is_sharpe": 0.054105171385758016,
+        "is_deflated_sharpe": 0.0,
+        "is_max_drawdown": -0.24601377363609822,
+        "is_total_return": -0.024488452618388612,
+        "turnover": 0.025380227390305432
+      },
+      "ETH/USDT": {
+        "is_sharpe": -0.4447984710462032,
+        "is_deflated_sharpe": -0.0,
+        "is_max_drawdown": -0.5032274383923498,
+        "is_total_return": -0.2675120942625995,
+        "turnover": 0.02598213344202459
+      },
+      "SOL/USDT": {
+        "is_sharpe": 1.050093835312714,
+        "is_deflated_sharpe": 0.0,
+        "is_max_drawdown": -0.17714988182399538,
+        "is_total_return": 0.6392051826216913,
+        "turnover": 0.02451626881151808
+      }
+    }
+  },
+  "ranked": [
+    {
+      "spec": {
+        "name": "ens_ivol_2_corr70",
+        "family": "ensemble",
+        "params": {
+          "members": [
+            {
+              "family": "relative",
+              "params": {
+                "lookback": 120,
+                "smooth": 24,
+                "enter_spread": 0.65,
+                "exit_spread": 0.25,
+                "switch_buffer": 0.1,
+                "target_vol": 0.006
+              }
+            },
+            {
+              "family": "trend",
+              "params": {
+                "fast": 48,
+                "slow": 168,
+                "confirm": 72,
+                "enter": 0.65,
+                "exit": 0.15,
+                "target_vol": 0.006,
+                "vol_cap": 0.03
+              }
+            }
+          ],
+          "member_weights": [
+            0.6037399173130372,
+            0.39626008268696267
+          ]
+        },
+        "notes": "Inverse-vol ensemble of 2 uncorrelated refined candidates."
+      },
+      "weights": {
+        "BTC/USDT": 0.2659422180817278,
+        "ETH/USDT": 0.23405778191827223,
+        "SOL/USDT": 0.5
+      },
+      "score": 0.23963615621782774,
+      "portfolio_metrics": {
+        "is_sharpe": 0.7387675413083259,
+        "is_deflated_sharpe": 0.0,
+        "is_max_drawdown": -0.1310771101934941,
+        "is_total_return": 0.2421748441196161,
+        "is_fold_sharpe_mean": 0.7232275586167835,
+        "is_fold_sharpe_min": -0.358254098211695,
+        "is_fold_positive_frac": 0.8,
+        "is_fold_worst_drawdown": -0.13107711019349122,
+        "is_sharpe_cost_1p5x": 0.4787116801966776,
+        "is_sharpe_cost_2x": 0.21888282625956063,
+        "mean_turnover": 0.02529287654794937,
+        "max_gross": 0.8586899740981895,
+        "max_weight": 0.5
+      },
+      "symbol_metrics": {
+        "BTC/USDT": {
+          "is_sharpe": 0.054105171385758016,
+          "is_deflated_sharpe": 0.0,
+          "is_max_drawdown": -0.24601377363609822,
+          "is_total_return": -0.024488452618388612,
+          "turnover": 0.025380227390305432
+        },
+        "ETH/USDT": {
+          "is_sharpe": -0.4447984710462032,
+          "is_deflated_sharpe": -0.0,
+          "is_max_drawdown": -0.5032274383923498,
+          "is_total_return": -0.2675120942625995,
+          "turnover": 0.02598213344202459
+        },
+        "SOL/USDT": {
+          "is_sharpe": 1.050093835312714,
+          "is_deflated_sharpe": 0.0,
+          "is_max_drawdown": -0.17714988182399538,
+          "is_total_return": 0.6392051826216913,
+          "turnover": 0.02451626881151808
+        }
+      }
+    },
+    {
+      "spec": {
+        "name": "rel_lb120_sm24_en65_sb10_tv006",
+        "family": "relative",
+        "params": {
+          "lookback": 120,
+          "smooth": 24,
+          "enter_spread": 0.65,
+          "exit_spread": 0.25,
+          "switch_buffer": 0.1,
+          "target_vol": 0.006
+        },
+        "notes": "Refined relative-strength search."
+      },
+      "weights": {
+        "BTC/USDT": 0.3354698140097491,
+        "ETH/USDT": 0.04318556050881637,
+        "SOL/USDT": 0.6213446254814345
+      },
+      "score": 0.57785856567605,
+      "portfolio_metrics": {
+        "is_sharpe": 1.2383747688114712,
+        "is_deflated_sharpe": 0.0,
+        "is_max_drawdown": -0.18052774604725563,
+        "is_total_return": 0.5328834504866757,
+        "is_fold_sharpe_mean": 1.1745906502880372,
+        "is_fold_sharpe_min": -0.14244615570194674,
+        "is_fold_positive_frac": 0.8,
+        "is_fold_worst_drawdown": -0.16065577479608173,
+        "is_sharpe_cost_1p5x": 1.0957821815564155,
+        "is_sharpe_cost_2x": 0.9531897624515477,
+        "mean_turnover": 0.015236543932324246,
+        "max_gross": 0.9568144394911837,
+        "max_weight": 0.6213446254814345
+      },
+      "symbol_metrics": {
+        "BTC/USDT": {
+          "is_sharpe": 0.3397475467778137,
+          "is_deflated_sharpe": 0.0,
+          "is_max_drawdown": -0.20079341344399004,
+          "is_total_return": 0.07724053352582749,
+          "turnover": 0.013995713832193255
+        },
+        "ETH/USDT": {
+          "is_sharpe": -0.9474274540446745,
+          "is_deflated_sharpe": -0.0,
+          "is_max_drawdown": -0.6272911312851136,
+          "is_total_return": -0.4511178320184015,
+          "turnover": 0.01606120885445277
+        },
+        "SOL/USDT": {
+          "is_sharpe": 1.161632355683428,
+          "is_deflated_sharpe": 0.0,
+          "is_max_drawdown": -0.3470722673023656,
+          "is_total_return": 0.8211582260197101,
+          "turnover": 0.015652709110326714
+        }
+      }
+    }
+  ]
+}

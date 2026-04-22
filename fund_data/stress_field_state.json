@@ -1,0 +1,55 @@
+{
+  "generated_at": "2026-04-22T02:26:37.840347+00:00",
+  "source_generated_at": "2026-04-22T02:26:23.277522+00:00",
+  "paper_mode": true,
+  "probation_mode": false,
+  "tick_index": 2,
+  "phase": "paper_field",
+  "policy_stage": "paper_warmup",
+  "pressure_score": 29.64818546293346,
+  "pressure_level": "low",
+  "collapse_probability": 0.3104597503705525,
+  "collapse_horizon_ticks": 6,
+  "hysteresis_score": 0.31090959451294975,
+  "propagation_speed": 1.4845585090286024,
+  "execution_inertia": 0.4451666877407114,
+  "latency_memory": 0.026973582748670146,
+  "should_halt": false,
+  "allow_entries": true,
+  "entry_action": "allow",
+  "tensor": {
+    "liquidity_distortion": 0.07644750575093139,
+    "latency_amplification": 0.026973582748670146,
+    "regime_volatility_curvature": 0.6415149201620102,
+    "execution_friction_density": 0.05721502090084479,
+    "collapse_hazard": 0.39871372012972406
+  },
+  "execution_profile": {
+    "slippage_multiplier": 1.391778383072815,
+    "latency_multiplier": 1.2196833888464027,
+    "book_depth_multiplier": 0.848182411514894,
+    "fill_ratio_multiplier": 0.9148959996146495,
+    "price_gap_multiplier": 0.7147295384001698,
+    "entry_size_multiplier": 0.8846820822540762,
+    "exposure_multiplier": 0.8498550410371575,
+    "preferred_algo": "auto"
+  },
+  "adversarial_input": {
+    "intensity": 0.5084073743288243,
+    "liquidity_impulse": 0.10168147486576487,
+    "latency_impulse": 0.08320312549261188,
+    "regime_impulse": 0.9508407374328824,
+    "friction_impulse": 0.09151332737918838,
+    "collapse_impulse": 0.5444275102447421,
+    "reasons": []
+  },
+  "reasons": [
+    "Sequence baseline has only 2 snapshots; require 96 for trajectory continuity.",
+    "Cross-asset correlation is collapsing into a stress cluster.",
+    "Micro-collapse probability 88% exceeds the tolerance band.",
+    "Paper-mode warmup is observing trades while the stress trajectory baseline is still bootstrapping."
+  ],
+  "policy_reasons": [
+    "Continuous pressure kernel predicts a live protection failure under coupled stress."
+  ]
+}

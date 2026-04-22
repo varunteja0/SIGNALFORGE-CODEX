@@ -1,0 +1,9 @@
+{
+  "asof": "2026-04-12 17:00:00+00:00",
+  "targets": {
+    "BTC/USDT": 0.5436958769223319,
+    "ETH/USDT": 0.0,
+    "SOL/USDT": 0.0
+  },
+  "latest_strategy": "rel_168_s48_sp05"
+}

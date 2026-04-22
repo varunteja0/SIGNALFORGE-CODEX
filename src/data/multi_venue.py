@@ -71,13 +71,25 @@ class MultiVenueFetcher:
         self._session.headers.update({"User-Agent": "SignalForge/3.0"})
         self._last_request_time = 0.0
         self._min_interval = 0.25  # 250ms between requests
+        self._provider_cooldowns: dict[str, float] = {}
+        self._provider_cooldown_seconds = 300.0
 
     # ------------------------------------------------------------------
     # Rate limiting
     # ------------------------------------------------------------------
-    def _rate_limited_get(self, url: str, params: dict = None,
-                          timeout: int = 10) -> Optional[Union[dict, list]]:
+    def _rate_limited_get(
+        self,
+        url: str,
+        params: dict = None,
+        timeout: int = 10,
+        provider: Optional[str] = None,
+    ) -> Optional[Union[dict, list]]:
         """GET with rate limiting and error handling."""
+        if provider is not None:
+            cooldown_until = self._provider_cooldowns.get(provider, 0.0)
+            if cooldown_until > time.time():
+                return None
+
         elapsed = time.time() - self._last_request_time
         if elapsed < self._min_interval:
             time.sleep(self._min_interval - elapsed)
@@ -87,8 +99,71 @@ class MultiVenueFetcher:
             resp.raise_for_status()
             return resp.json()
         except requests.exceptions.RequestException as e:
+            if provider is not None:
+                self._provider_cooldowns[provider] = (
+                    time.time() + self._provider_cooldown_seconds
+                )
             logger.warning(f"Request failed: {url} — {e}")
             return None
+
+    def _sanitize_timeseries_frame(
+        self,
+        df: Optional[pd.DataFrame],
+        required_cols: tuple[str, ...],
+    ) -> Optional[pd.DataFrame]:
+        """Return a clean time-indexed frame or None when the payload is unusable."""
+        if df is None or df.empty:
+            return None
+
+        clean = self._normalize_datetime_index(df)
+        if clean is None:
+            return None
+
+        if clean.empty:
+            return None
+
+        present_cols = [col for col in required_cols if col in clean.columns]
+        if not present_cols:
+            return None
+
+        clean = clean.sort_index()
+        clean = clean[~clean.index.duplicated(keep="last")]
+        for col in present_cols:
+            clean[col] = pd.to_numeric(clean[col], errors="coerce")
+        clean = clean[present_cols].dropna(how="all")
+        if clean.empty:
+            return None
+        return clean
+
+    def _normalize_datetime_index(
+        self,
+        df: Optional[pd.DataFrame],
+    ) -> Optional[pd.DataFrame]:
+        """Normalize time indexes to timezone-naive datetime64[ns]."""
+        if df is None or df.empty:
+            return None
+
+        clean = df.copy()
+        if not isinstance(clean.index, pd.DatetimeIndex):
+            if "timestamp" not in clean.columns:
+                return None
+            clean["timestamp"] = pd.to_datetime(
+                clean["timestamp"], errors="coerce", utc=True
+            )
+            clean = clean.set_index("timestamp")
+        else:
+            clean.index = pd.to_datetime(clean.index, errors="coerce")
+
+        if clean.index.tz is not None:
+            clean.index = clean.index.tz_convert("UTC").tz_localize(None)
+
+        clean.index = pd.DatetimeIndex(clean.index).astype("datetime64[ns]")
+        clean = clean[~clean.index.isna()]
+        if clean.empty:
+            return None
+        clean = clean.sort_index()
+        clean = clean[~clean.index.duplicated(keep="last")]
+        return clean
 
     # ------------------------------------------------------------------
     # 1. Binance Top Trader L/S Ratio (by positions, USD-weighted)
@@ -295,6 +370,8 @@ class MultiVenueFetcher:
             data = self._rate_limited_get(
                 f"{self.OKX_BASE}/api/v5/public/funding-rate-history",
                 params=params,
+                timeout=4,
+                provider="okx_public",
             )
             if not data or "data" not in data:
                 break
@@ -340,22 +417,41 @@ class MultiVenueFetcher:
         if binance_funding_df is None:
             from src.data.structural import StructuralDataFetcher
             sf = StructuralDataFetcher()
-            binance_funding_df = sf.fetch_funding_rate_history(symbol, days)
-
-        if binance_funding_df is None:
-            logger.warning("No Binance funding data available")
-            return None
+            binance_symbol = symbol.replace("/", "").replace(":USDT", "")
+            binance_funding_df = sf.fetch_funding_rate_history(binance_symbol, days)
 
         # Normalize Binance funding column name
-        if "funding_rate" in binance_funding_df.columns:
+        if binance_funding_df is not None and "funding_rate" in binance_funding_df.columns:
             binance_funding_df = binance_funding_df.rename(
                 columns={"funding_rate": "binance_funding_rate"}
             )
 
+        binance_funding_df = self._sanitize_timeseries_frame(
+            binance_funding_df,
+            ("binance_funding_rate",),
+        )
+        bybit_df = self._sanitize_timeseries_frame(
+            bybit_df,
+            ("bybit_funding_rate",),
+        )
+        okx_df = self._sanitize_timeseries_frame(
+            okx_df,
+            ("okx_funding_rate",),
+        )
+
+        if binance_funding_df is None:
+            logger.warning("No usable Binance funding data available")
+            return None
+
         # Create hourly index and forward-fill to align
         start = binance_funding_df.index.min()
         end = binance_funding_df.index.max()
-        hourly_idx = pd.date_range(start, end, freq="1h")
+        if pd.isna(start) or pd.isna(end):
+            logger.warning("Invalid Binance funding timestamps for %s", symbol)
+            return None
+        hourly_idx = pd.DatetimeIndex(
+            pd.date_range(start, end, freq="1h")
+        ).astype("datetime64[ns]")
         result = pd.DataFrame(index=hourly_idx)
         result.index.name = "timestamp"
 
@@ -426,6 +522,8 @@ class MultiVenueFetcher:
                 "limit": str(min(limit, 100)),
                 "state": "filled",
             },
+            timeout=4,
+            provider="okx_public",
         )
         if not data or "data" not in data:
             return None
@@ -581,21 +679,33 @@ class MultiVenueFetcher:
         logger.info(f"[MultiVenue] Fetching data for {symbol} ({days}d)")
 
         # 1. Top trader vs retail divergence
-        divergence_df = self.fetch_top_retail_divergence(symbol, days)
+        try:
+            divergence_df = self.fetch_top_retail_divergence(symbol, days)
+        except Exception as exc:
+            logger.warning("  Top trader divergence failed: %s", exc)
+            divergence_df = None
         if divergence_df is not None:
             logger.info(f"  Top trader divergence: {len(divergence_df)} rows")
         else:
             logger.warning("  Top trader divergence: UNAVAILABLE")
 
         # 2. Cross-venue funding
-        cross_funding_df = self.fetch_cross_venue_funding(symbol, days)
+        try:
+            cross_funding_df = self.fetch_cross_venue_funding(symbol, days)
+        except Exception as exc:
+            logger.warning("  Cross-venue funding failed: %s", exc)
+            cross_funding_df = None
         if cross_funding_df is not None:
             logger.info(f"  Cross-venue funding: {len(cross_funding_df)} rows")
         else:
             logger.warning("  Cross-venue funding: UNAVAILABLE")
 
         # 3. OKX liquidations (recent only, not historical)
-        liq_df = self.fetch_okx_liquidations(symbol)
+        try:
+            liq_df = self.fetch_okx_liquidations(symbol)
+        except Exception as exc:
+            logger.warning("  OKX liquidations failed: %s", exc)
+            liq_df = None
         if liq_df is not None:
             logger.info(f"  OKX liquidations: {len(liq_df)} recent orders")
         else:
@@ -606,9 +716,16 @@ class MultiVenueFetcher:
             result = pd.DataFrame()
             for df in [divergence_df, cross_funding_df]:
                 if df is not None:
+                    df = self._normalize_datetime_index(df)
+                    if df is None:
+                        continue
                     if result.empty:
                         result = df
                     else:
+                        result = self._normalize_datetime_index(result)
+                        if result is None:
+                            result = df
+                            continue
                         result = pd.merge_asof(
                             result, df, left_index=True, right_index=True,
                             direction="backward",
@@ -616,20 +733,18 @@ class MultiVenueFetcher:
             return result
 
         # Merge onto price_df using merge_asof (backward = no lookahead)
-        result = price_df.copy()
-
-        # Ensure timezone-naive for merging
-        if result.index.tz is not None:
-            result.index = result.index.tz_localize(None)
+        result = self._normalize_datetime_index(price_df)
+        if result is None:
+            return price_df.copy()
 
         for name, df in [
             ("divergence", divergence_df),
             ("cross_funding", cross_funding_df),
         ]:
             if df is not None:
-                df_copy = df.copy()
-                if df_copy.index.tz is not None:
-                    df_copy.index = df_copy.index.tz_localize(None)
+                df_copy = self._normalize_datetime_index(df)
+                if df_copy is None:
+                    continue
                 result = pd.merge_asof(
                     result, df_copy, left_index=True, right_index=True,
                     direction="backward",
@@ -638,22 +753,21 @@ class MultiVenueFetcher:
 
         # Aggregate recent liquidation data into features
         if liq_df is not None:
-            liq_copy = liq_df.copy()
-            if liq_copy.index.tz is not None:
-                liq_copy.index = liq_copy.index.tz_localize(None)
+            liq_copy = self._normalize_datetime_index(liq_df)
 
-            # Count long vs short liquidations in recent window
-            recent_mask = liq_copy.index >= (result.index[-1] - pd.Timedelta("24h"))
-            recent_liq = liq_copy[recent_mask]
-            if len(recent_liq) > 0:
-                long_liq_count = (recent_liq["liq_side"] == "long").sum()
-                short_liq_count = (recent_liq["liq_side"] == "short").sum()
-                total_liq = len(recent_liq)
-                result["okx_liq_count_24h"] = total_liq
-                result["okx_liq_long_pct"] = long_liq_count / max(total_liq, 1)
-                result["okx_liq_imbalance"] = (
-                    (long_liq_count - short_liq_count) / max(total_liq, 1)
-                )
+            if liq_copy is not None:
+                # Count long vs short liquidations in recent window
+                recent_mask = liq_copy.index >= (result.index[-1] - pd.Timedelta("24h"))
+                recent_liq = liq_copy[recent_mask]
+                if len(recent_liq) > 0:
+                    long_liq_count = (recent_liq["liq_side"] == "long").sum()
+                    short_liq_count = (recent_liq["liq_side"] == "short").sum()
+                    total_liq = len(recent_liq)
+                    result["okx_liq_count_24h"] = total_liq
+                    result["okx_liq_long_pct"] = long_liq_count / max(total_liq, 1)
+                    result["okx_liq_imbalance"] = (
+                        (long_liq_count - short_liq_count) / max(total_liq, 1)
+                    )
 
         # Forward-fill structural data (updates less frequently than price)
         structural_cols = [c for c in result.columns if c not in price_df.columns]

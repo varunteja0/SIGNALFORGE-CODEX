@@ -1,0 +1,70 @@
+{
+  "n_trials": 36,
+  "base": {
+    "name": "base_dyn_v1",
+    "params": {
+      "lookback": 120,
+      "smooth": 24,
+      "enter_spread": 0.65,
+      "exit_spread": 0.25,
+      "switch_buffer": 0.1,
+      "target_vol": 0.005
+    },
+    "score": 0.5895898684527587,
+    "is_sharpe": 1.141928863060186,
+    "is_fold_sharpe_mean": 1.0975780041514684,
+    "is_fold_sharpe_min": -0.04653262062861111,
+    "is_fold_positive_frac": 0.8,
+    "is_sharpe_cost_2x": 0.7593867280782062,
+    "is_max_drawdown": -0.11350629900168063,
+    "is_total_return": 0.33125826191319985,
+    "mean_turnover": 0.014569743399538168,
+    "max_weight": 0.5,
+    "weights": {
+      "BTC/USDT": 0.41547389746820573,
+      "ETH/USDT": 0.0845261025317943,
+      "SOL/USDT": 0.5
+    }
+  },
+  "best_gated": {
+    "name": "regime_vw168_rw1440_q80",
+    "params": {
+      "base": {
+        "family": "relative",
+        "params": {
+          "lookback": 120,
+          "smooth": 24,
+          "enter_spread": 0.65,
+          "exit_spread": 0.25,
+          "switch_buffer": 0.1,
+          "target_vol": 0.005
+        }
+      },
+      "vol_window": 168,
+      "regime_window": 1440,
+      "regime_quantile": 0.8
+    },
+    "score": 0.5073765848061962,
+    "is_sharpe": 1.2664232199282426,
+    "is_fold_sharpe_mean": 1.2272557922166163,
+    "is_fold_sharpe_min": -0.6781294111726246,
+    "is_fold_positive_frac": 0.8,
+    "is_sharpe_cost_2x": 0.8769303202904188,
+    "is_max_drawdown": -0.10376170260942652,
+    "is_total_return": 0.33333420463454555,
+    "mean_turnover": 0.013104872015839826,
+    "max_weight": 0.5,
+    "weights": {
+      "BTC/USDT": 0.391011458226837,
+      "ETH/USDT": 0.10898854177316294,
+      "SOL/USDT": 0.5
+    }
+  },
+  "gate_g1": {
+    "base_fold_sharpe": 1.0975780041514684,
+    "floor": 1.1,
+    "fold_sharpe_pass": true,
+    "drawdown_pass": true,
+    "pass": true
+  }
+}

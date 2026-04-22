@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Advanced Execution Engine — Smart Order Routing & Realistic Simulation
 ========================================================================
@@ -15,11 +17,14 @@ Upgrades over basic market orders:
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from src.ops.stress_context import StressContext
 
 
 @dataclass
@@ -41,6 +46,7 @@ class SmartOrderResult:
     is_paper: bool = True
     algo: str = "market"       # "market", "twap", "vwap"
     n_child_orders: int = 1    # How many sub-orders were used
+    metadata: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -82,6 +88,7 @@ class SmartExecutionEngine:
         twap_threshold_usd: float = 50000, # Orders > $50K use TWAP
         twap_n_slices: int = 5,           # Split into 5 sub-orders
         default_book_depth_usd: float = 500000,  # Assume $500K per side
+        paper_latency_ms_range: tuple[float, float] = (120.0, 300.0),
     ):
         self.exchange = exchange
         self.paper_mode = paper_mode
@@ -90,16 +97,21 @@ class SmartExecutionEngine:
         self.twap_threshold = twap_threshold_usd
         self.twap_slices = twap_n_slices
         self.default_book_depth = default_book_depth_usd
+        self.paper_latency_ms_range = paper_latency_ms_range
 
         # State
         self.trailing_stops: dict[str, TrailingStop] = {}
         self.pending_partials: dict[str, float] = {}  # Unfilled from partial fills
         self.execution_log: list[SmartOrderResult] = []
+        self.stress_context: StressContext | None = None
 
         # Execution quality metrics
         self._arrival_prices: dict[str, float] = {}
         self._total_slippage_bps: float = 0
         self._total_executions: int = 0
+
+    def set_stress_context(self, context: StressContext | None) -> None:
+        self.stress_context = context
 
     def execute_entry(
         self,
@@ -124,19 +136,26 @@ class SmartExecutionEngine:
         # 1. Price gap check: reject stale signals
         if signal_price > 0 and entry_price > 0:
             gap_pct = abs(entry_price / signal_price - 1) * 100
-            if gap_pct > self.max_price_gap_pct:
+            allowed_gap_pct = self.max_price_gap_pct
+            if self.paper_mode and self.stress_context is not None:
+                allowed_gap_pct = self.stress_context.adjusted_price_gap_pct(allowed_gap_pct)
+            if gap_pct > allowed_gap_pct:
                 return SmartOrderResult(
                     success=False,
                     symbol=symbol,
                     side=side,
-                    error=f"Price gap {gap_pct:.1f}% > max {self.max_price_gap_pct}%",
+                    error=f"Price gap {gap_pct:.1f}% > max {allowed_gap_pct:.1f}%",
                     is_paper=self.paper_mode,
                 )
 
         # 2. Estimate slippage before execution
         order_notional = size * entry_price
         book_depth = book_depth_usd or self.default_book_depth
+        if self.paper_mode and self.stress_context is not None:
+            book_depth = self.stress_context.adjusted_book_depth(book_depth)
         est_slippage_bps = self._estimate_slippage_bps(order_notional, book_depth)
+        if self.paper_mode and self.stress_context is not None:
+            est_slippage_bps = self.stress_context.adjusted_slippage_bps(est_slippage_bps)
 
         if est_slippage_bps > self.max_slippage_bps:
             return SmartOrderResult(
@@ -168,6 +187,8 @@ class SmartExecutionEngine:
             self._arrival_prices[symbol] = signal_price or entry_price
             self._total_executions += 1
             self._total_slippage_bps += result.slippage_bps
+            if self.stress_context is not None:
+                result.metadata.setdefault("stress_context", self.stress_context.execution_metadata())
 
             # Set up trailing stop
             if atr > 0:
@@ -179,6 +200,11 @@ class SmartExecutionEngine:
                     trail_atr_mult=2.0,
                     highest_favorable=result.price,
                 )
+
+        if self.paper_mode:
+            result.execution_ms = self._paper_execution_latency_ms(result.algo)
+        else:
+            result.execution_ms = time.time() * 1000 - start_ms
 
         self.execution_log.append(result)
         return result
@@ -193,13 +219,20 @@ class SmartExecutionEngine:
     ) -> SmartOrderResult:
         """Execute exit with realistic slippage."""
         book_depth = book_depth_usd or self.default_book_depth
+        if self.paper_mode and self.stress_context is not None:
+            book_depth = self.stress_context.adjusted_book_depth(book_depth)
         order_notional = size * current_price
         est_slippage_bps = self._estimate_slippage_bps(order_notional, book_depth)
+        if self.paper_mode and self.stress_context is not None:
+            est_slippage_bps = self.stress_context.adjusted_slippage_bps(est_slippage_bps)
 
         result = self._market_execute(
             symbol, -direction, size, current_price,
             book_depth, est_slippage_bps,
         )
+
+        if self.paper_mode:
+            result.execution_ms = self._paper_execution_latency_ms(result.algo)
 
         # Clean up trailing stop
         self.trailing_stops.pop(symbol, None)
@@ -285,6 +318,20 @@ class SmartExecutionEngine:
 
         return float(min(slippage_bps, self.max_slippage_bps))
 
+    def _paper_execution_latency_ms(self, algo: str) -> float:
+        """Simulate realistic execution latency without sleeping."""
+        lo, hi = self.paper_latency_ms_range
+        base = float(np.random.uniform(lo, hi))
+        if algo == "twap":
+            base *= 1.6
+        elif algo == "vwap":
+            base *= 1.4
+        elif algo.startswith("limit_bias"):
+            base *= 1.2
+        if self.stress_context is not None:
+            base = self.stress_context.adjusted_latency_ms(base)
+        return base
+
     def _market_execute(
         self,
         symbol: str,
@@ -360,6 +407,10 @@ class SmartExecutionEngine:
             slice_slippage = self._estimate_slippage_bps(
                 slice_notional, book_depth
             )
+            slice_fill_ratio = 1.0
+            if self.paper_mode and self.stress_context is not None:
+                slice_slippage = self.stress_context.adjusted_slippage_bps(slice_slippage)
+                slice_fill_ratio = self.stress_context.adjusted_fill_ratio(1.0)
 
             if self.paper_mode:
                 # Simulate: price walks randomly between slices
@@ -372,8 +423,9 @@ class SmartExecutionEngine:
                 else:
                     slice_price *= (1 - slice_slippage / 10000)
 
-                weighted_price += slice_price * slice_size
-                total_filled += slice_size
+                filled_slice = slice_size * slice_fill_ratio
+                weighted_price += slice_price * filled_slice
+                total_filled += filled_slice
 
         if total_filled > 0:
             avg_price = weighted_price / total_filled
@@ -407,6 +459,9 @@ class SmartExecutionEngine:
         algo: str = "market",
     ) -> SmartOrderResult:
         """Simulate a paper fill with realistic slippage."""
+        context = self.stress_context if self.paper_mode else None
+        if context is not None:
+            est_slippage_bps = context.adjusted_slippage_bps(est_slippage_bps)
         # Apply slippage
         slip_pct = est_slippage_bps / 10000
         if direction == 1:
@@ -419,6 +474,8 @@ class SmartExecutionEngine:
         if size * reference_price > self.default_book_depth * 0.5:
             # Very large order — might only fill 90-95%
             fill_ratio = np.random.uniform(0.9, 1.0)
+        if context is not None:
+            fill_ratio = context.adjusted_fill_ratio(fill_ratio)
 
         filled_size = size * fill_ratio
         unfilled = size - filled_size
@@ -437,6 +494,7 @@ class SmartExecutionEngine:
             slippage_bps=est_slippage_bps,
             is_paper=True,
             algo=algo,
+            metadata={"stress_context": context.execution_metadata()} if context is not None else {},
         )
 
     # ================================================================
@@ -476,12 +534,16 @@ class SmartExecutionEngine:
         for i, frac in enumerate(fractions):
             slice_size = size * frac
             slice_notional = slice_size * reference_price
+            slice_fill_ratio = 1.0
 
             # Each slice has lower impact because it matches volume
             # VWAP reduces impact by ~30% vs market orders
             slice_slippage = self._estimate_slippage_bps(
                 slice_notional, book_depth
             ) * 0.7  # VWAP benefit
+            if self.paper_mode and self.stress_context is not None:
+                slice_slippage = self.stress_context.adjusted_slippage_bps(slice_slippage)
+                slice_fill_ratio = self.stress_context.adjusted_fill_ratio(1.0)
 
             if self.paper_mode:
                 # Simulate: price drifts between slices
@@ -493,8 +555,9 @@ class SmartExecutionEngine:
                 else:
                     slice_price *= (1 - slice_slippage / 10000)
 
-                weighted_price += slice_price * slice_size
-                total_filled += slice_size
+                filled_slice = slice_size * slice_fill_ratio
+                weighted_price += slice_price * filled_slice
+                total_filled += filled_slice
             else:
                 # Live: place limit order near mid-price, weighted by volume
                 try:
@@ -566,16 +629,23 @@ class SmartExecutionEngine:
 
         if signal_price > 0 and entry_price > 0:
             gap_pct = abs(entry_price / signal_price - 1) * 100
-            if gap_pct > self.max_price_gap_pct:
+            allowed_gap_pct = self.max_price_gap_pct
+            if self.paper_mode and self.stress_context is not None:
+                allowed_gap_pct = self.stress_context.adjusted_price_gap_pct(allowed_gap_pct)
+            if gap_pct > allowed_gap_pct:
                 return SmartOrderResult(
                     success=False, symbol=symbol, side=side,
-                    error=f"Price gap {gap_pct:.1f}% > max {self.max_price_gap_pct}%",
+                    error=f"Price gap {gap_pct:.1f}% > max {allowed_gap_pct:.1f}%",
                     is_paper=self.paper_mode,
                 )
 
         order_notional = size * entry_price
         book_depth = book_depth_usd or self.default_book_depth
+        if self.paper_mode and self.stress_context is not None:
+            book_depth = self.stress_context.adjusted_book_depth(book_depth)
         est_slippage_bps = self._estimate_slippage_bps(order_notional, book_depth)
+        if self.paper_mode and self.stress_context is not None:
+            est_slippage_bps = self.stress_context.adjusted_slippage_bps(est_slippage_bps)
 
         result = self._vwap_execute(
             symbol, direction, size, entry_price,
@@ -591,6 +661,8 @@ class SmartExecutionEngine:
             self._arrival_prices[symbol] = signal_price or entry_price
             self._total_executions += 1
             self._total_slippage_bps += result.slippage_bps
+        if result.success and self.stress_context is not None:
+            result.metadata.setdefault("stress_context", self.stress_context.execution_metadata())
 
         self.execution_log.append(result)
         return result
@@ -628,17 +700,24 @@ class SmartExecutionEngine:
 
         if signal_price > 0 and entry_price > 0:
             gap_pct = abs(entry_price / signal_price - 1) * 100
-            if gap_pct > self.max_price_gap_pct:
+            allowed_gap_pct = self.max_price_gap_pct
+            if self.paper_mode and self.stress_context is not None:
+                allowed_gap_pct = self.stress_context.adjusted_price_gap_pct(allowed_gap_pct)
+            if gap_pct > allowed_gap_pct:
                 return SmartOrderResult(
                     success=False, symbol=symbol, side=side,
-                    error=f"Price gap {gap_pct:.1f}%",
+                    error=f"Price gap {gap_pct:.1f}% > max {allowed_gap_pct:.1f}%",
                     is_paper=self.paper_mode,
                 )
 
         book_depth = book_depth_usd or self.default_book_depth
+        if self.paper_mode and self.stress_context is not None:
+            book_depth = self.stress_context.adjusted_book_depth(book_depth)
 
         if self.paper_mode:
             rng = np.random.default_rng()
+            if self.stress_context is not None:
+                fill_probability *= self.stress_context.execution_profile.fill_ratio_multiplier
             filled_as_limit = rng.random() < fill_probability
 
             if filled_as_limit:
@@ -719,6 +798,8 @@ class SmartExecutionEngine:
             self._arrival_prices[symbol] = signal_price or entry_price
             self._total_executions += 1
             self._total_slippage_bps += result.slippage_bps
+            if self.stress_context is not None:
+                result.metadata.setdefault("stress_context", self.stress_context.execution_metadata())
 
         self.execution_log.append(result)
         return result
@@ -734,6 +815,8 @@ class SmartExecutionEngine:
         Returns: "market", "limit_bias", "vwap", or "twap"
         """
         book_depth = book_depth_usd or self.default_book_depth
+        if self.paper_mode and self.stress_context is not None:
+            book_depth = self.stress_context.adjusted_book_depth(book_depth)
         participation = order_notional / book_depth
 
         if urgency == "high":
@@ -741,11 +824,17 @@ class SmartExecutionEngine:
                 return "twap"
             return "market"
         if urgency == "low":
-            return "limit_bias"
+            default_algo = "limit_bias"
+            if self.paper_mode and self.stress_context is not None:
+                return self.stress_context.select_algo(default_algo, urgency)
+            return default_algo
         # Normal urgency
         if participation > 0.1:
-            return "vwap"
+            default_algo = "vwap"
         elif participation > 0.02:
-            return "limit_bias"
+            default_algo = "limit_bias"
         else:
-            return "market"
+            default_algo = "market"
+        if self.paper_mode and self.stress_context is not None:
+            return self.stress_context.select_algo(default_algo, urgency)
+        return default_algo

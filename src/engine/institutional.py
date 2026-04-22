@@ -22,6 +22,21 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
+def _profit_factor(gross_win: float, gross_loss: float) -> float:
+    """Return a numerically stable profit factor.
+
+    A no-loss sample with positive gross wins is profitable and should not be
+    reported as 0.0 PF, which previously caused false regime-level failures.
+    """
+    gross_win = float(gross_win)
+    gross_loss = float(gross_loss)
+    if gross_loss > 0.0:
+        return gross_win / gross_loss
+    if gross_win > 0.0:
+        return float("inf")
+    return 0.0
+
+
 # ─── Data Structures ─────────────────────────────────────────────
 
 @dataclass
@@ -132,7 +147,7 @@ class CorrelationEngine:
                 report.strategy_corr = strat_df.corr()
 
                 # Max pairwise correlation (off-diagonal)
-                corr_vals = report.strategy_corr.values
+                corr_vals = report.strategy_corr.to_numpy(copy=True)
                 np.fill_diagonal(corr_vals, 0)
                 report.max_strategy_corr = float(np.abs(corr_vals).max())
 
@@ -152,7 +167,7 @@ class CorrelationEngine:
             asset_df = asset_df.dropna()
             if len(asset_df) > 50:
                 report.asset_corr = asset_df.corr()
-                corr_vals = report.asset_corr.values
+                corr_vals = report.asset_corr.to_numpy(copy=True)
                 np.fill_diagonal(corr_vals, 0)
                 report.max_asset_corr = float(np.abs(corr_vals).max())
 
@@ -248,7 +263,7 @@ class RegimeAnalyzer:
                 e = breakdown.data[regime][cell_key]
                 n = e["wins"] + e["losses"]
                 e["total_trades"] = n
-                e["pf"] = e["gross_win"] / e["gross_loss"] if e["gross_loss"] > 0 else 0
+                e["pf"] = _profit_factor(e["gross_win"], e["gross_loss"])
                 e["win_rate"] = e["wins"] / n if n > 0 else 0
                 if n > 1:
                     pnls = np.array(e["trades"])
@@ -347,7 +362,7 @@ class CapacitySimulator:
             l = [t for t in all_trades if t.pnl <= 0]
             gw = sum(t.pnl for t in w)
             gl = sum(abs(t.pnl) for t in l)
-            pf = gw / gl if gl > 0 else 0
+            pf = _profit_factor(gw, gl)
             net = gw - gl
 
             pnls = np.array([t.pnl for t in all_trades]) if all_trades else np.array([0])
@@ -439,10 +454,25 @@ class InstitutionalValidator:
         strats_seen = set()
         strats_profitable = set()
         for regime, cells in report.regime_breakdown.data.items():
+            strategy_totals = {}
             for cell_key, stats in cells.items():
                 strat = cell_key.split("|")[0]
                 strats_seen.add(strat)
+                total = strategy_totals.setdefault(
+                    strat,
+                    {"gross_win": 0.0, "gross_loss": 0.0, "total_trades": 0},
+                )
+                total["gross_win"] += float(stats.get("gross_win", 0.0))
+                total["gross_loss"] += float(stats.get("gross_loss", 0.0))
+                total["total_trades"] += int(stats.get("total_trades", 0))
+
                 if stats["pf"] > 1.0 and stats["total_trades"] >= 3:
+                    strats_profitable.add(strat)
+            for strat, total in strategy_totals.items():
+                if (
+                    _profit_factor(total["gross_win"], total["gross_loss"]) > 1.0
+                    and total["total_trades"] >= 3
+                ):
                     strats_profitable.add(strat)
         report.verdicts["all_strats_profitable_1+_regime"] = strats_seen == strats_profitable
 

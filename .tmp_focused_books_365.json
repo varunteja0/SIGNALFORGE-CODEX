@@ -1,0 +1,467 @@
+{
+  "engine_settings": {
+    "capital": 10000,
+    "data_days": 365,
+    "max_total_exposure": 0.1,
+    "max_position_notional_pct": 0.2,
+    "use_regime_allocator": true,
+    "use_risk_manager": true
+  },
+  "ranked_results": [
+    {
+      "name": "eth_xrp_focus",
+      "total_return": 0.19666,
+      "final_capital": 11966.598906,
+      "sharpe": 1.886746,
+      "profit_factor": 2.452989,
+      "max_drawdown": 0.038299,
+      "total_trades": 89,
+      "strategy_results": {
+        "funding_mr_v7": {
+          "assets": [
+            "ETH/USDT",
+            "XRP/USDT"
+          ],
+          "net_pnl": 749.854159,
+          "trades": 30,
+          "pf": 2.479111
+        },
+        "momentum_breakout": {
+          "assets": [
+            "ETH/USDT"
+          ],
+          "net_pnl": 660.243634,
+          "trades": 37,
+          "pf": 2.1105
+        },
+        "extreme_spike": {
+          "assets": [
+            "XRP/USDT"
+          ],
+          "net_pnl": 275.399699,
+          "trades": 7,
+          "pf": 4.100043
+        },
+        "contrarian_asym": {
+          "assets": [
+            "XRP/USDT"
+          ],
+          "net_pnl": 281.101414,
+          "trades": 15,
+          "pf": 2.723085
+        }
+      },
+      "score": 0.283173
+    },
+    {
+      "name": "trio_extreme_xrp",
+      "total_return": 0.179286,
+      "final_capital": 11792.860045,
+      "sharpe": 1.920628,
+      "profit_factor": 2.06859,
+      "max_drawdown": 0.041397,
+      "total_trades": 91,
+      "strategy_results": {
+        "funding_mr_v7": {
+          "assets": [
+            "ETH/USDT",
+            "SOL/USDT",
+            "XRP/USDT"
+          ],
+          "net_pnl": 857.216712,
+          "trades": 47,
+          "pf": 1.862047
+        },
+        "momentum_breakout": {
+          "assets": [
+            "ETH/USDT"
+          ],
+          "net_pnl": 660.243634,
+          "trades": 37,
+          "pf": 2.1105
+        },
+        "extreme_spike": {
+          "assets": [
+            "XRP/USDT"
+          ],
+          "net_pnl": 275.399699,
+          "trades": 7,
+          "pf": 4.100043
+        }
+      },
+      "score": 0.257578
+    },
+    {
+      "name": "xrp_convex",
+      "total_return": 0.168778,
+      "final_capital": 11687.775053,
+      "sharpe": 1.769213,
+      "profit_factor": 2.646042,
+      "max_drawdown": 0.035964,
+      "total_trades": 71,
+      "strategy_results": {
+        "funding_mr_v7": {
+          "assets": [
+            "XRP/USDT"
+          ],
+          "net_pnl": 471.030305,
+          "trades": 12,
+          "pf": 3.633935
+        },
+        "momentum_breakout": {
+          "assets": [
+            "ETH/USDT"
+          ],
+          "net_pnl": 660.243634,
+          "trades": 37,
+          "pf": 2.1105
+        },
+        "extreme_spike": {
+          "assets": [
+            "XRP/USDT"
+          ],
+          "net_pnl": 275.399699,
+          "trades": 7,
+          "pf": 4.100043
+        },
+        "contrarian_asym": {
+          "assets": [
+            "XRP/USDT"
+          ],
+          "net_pnl": 281.101414,
+          "trades": 15,
+          "pf": 2.723085
+        }
+      },
+      "score": 0.256793
+    },
+    {
+      "name": "trio_contra_xrp_sol",
+      "total_return": 0.157452,
+      "final_capital": 11574.517265,
+      "sharpe": 1.957345,
+      "profit_factor": 2.017308,
+      "max_drawdown": 0.032814,
+      "total_trades": 106,
+      "strategy_results": {
+        "funding_mr_v7": {
+          "assets": [
+            "ETH/USDT",
+            "SOL/USDT",
+            "XRP/USDT"
+          ],
+          "net_pnl": 714.568003,
+          "trades": 47,
+          "pf": 1.864203
+        },
+        "momentum_breakout": {
+          "assets": [
+            "ETH/USDT"
+          ],
+          "net_pnl": 548.491966,
+          "trades": 37,
+          "pf": 2.11027
+        },
+        "contrarian_asym": {
+          "assets": [
+            "XRP/USDT",
+            "SOL/USDT"
+          ],
+          "net_pnl": 311.457296,
+          "trades": 22,
+          "pf": 2.372908
+        }
+      },
+      "score": 0.240112
+    },
+    {
+      "name": "quad_focus",
+      "total_return": 0.154518,
+      "final_capital": 11545.182097,
+      "sharpe": 1.990412,
+      "profit_factor": 2.11353,
+      "max_drawdown": 0.034354,
+      "total_trades": 113,
+      "strategy_results": {
+        "funding_mr_v7": {
+          "assets": [
+            "ETH/USDT",
+            "SOL/USDT",
+            "XRP/USDT"
+          ],
+          "net_pnl": 612.61904,
+          "trades": 47,
+          "pf": 1.865746
+        },
+        "momentum_breakout": {
+          "assets": [
+            "ETH/USDT"
+          ],
+          "net_pnl": 469.088272,
+          "trades": 37,
+          "pf": 2.110107
+        },
+        "extreme_spike": {
+          "assets": [
+            "XRP/USDT"
+          ],
+          "net_pnl": 196.645131,
+          "trades": 7,
+          "pf": 4.106072
+        },
+        "contrarian_asym": {
+          "assets": [
+            "XRP/USDT",
+            "SOL/USDT"
+          ],
+          "net_pnl": 266.829654,
+          "trades": 22,
+          "pf": 2.374337
+        }
+      },
+      "score": 0.239324
+    },
+    {
+      "name": "no_squeeze_full",
+      "total_return": 0.154518,
+      "final_capital": 11545.182097,
+      "sharpe": 1.990412,
+      "profit_factor": 2.11353,
+      "max_drawdown": 0.034354,
+      "total_trades": 113,
+      "strategy_results": {
+        "funding_mr_v7": {
+          "assets": [
+            "ETH/USDT",
+            "SOL/USDT",
+            "XRP/USDT"
+          ],
+          "net_pnl": 612.61904,
+          "trades": 47,
+          "pf": 1.865746
+        },
+        "extreme_spike": {
+          "assets": [
+            "XRP/USDT"
+          ],
+          "net_pnl": 196.645131,
+          "trades": 7,
+          "pf": 4.106072
+        },
+        "momentum_breakout": {
+          "assets": [
+            "ETH/USDT"
+          ],
+          "net_pnl": 469.088272,
+          "trades": 37,
+          "pf": 2.110107
+        },
+        "contrarian_asym": {
+          "assets": [
+            "XRP/USDT",
+            "SOL/USDT"
+          ],
+          "net_pnl": 266.829654,
+          "trades": 22,
+          "pf": 2.374337
+        }
+      },
+      "score": 0.239324
+    },
+    {
+      "name": "core_duo_eth_xrp",
+      "total_return": 0.14101,
+      "final_capital": 11410.097793,
+      "sharpe": 1.911917,
+      "profit_factor": 2.280151,
+      "max_drawdown": 0.022613,
+      "total_trades": 67,
+      "strategy_results": {
+        "funding_mr_v7": {
+          "assets": [
+            "ETH/USDT",
+            "XRP/USDT"
+          ],
+          "net_pnl": 749.854159,
+          "trades": 30,
+          "pf": 2.479111
+        },
+        "momentum_breakout": {
+          "assets": [
+            "ETH/USDT"
+          ],
+          "net_pnl": 660.243634,
+          "trades": 37,
+          "pf": 2.1105
+        }
+      },
+      "score": 0.232664
+    },
+    {
+      "name": "core_duo_full",
+      "total_return": 0.151746,
+      "final_capital": 11517.460347,
+      "sharpe": 1.838179,
+      "profit_factor": 1.955012,
+      "max_drawdown": 0.033023,
+      "total_trades": 84,
+      "strategy_results": {
+        "funding_mr_v7": {
+          "assets": [
+            "ETH/USDT",
+            "SOL/USDT",
+            "XRP/USDT"
+          ],
+          "net_pnl": 857.216712,
+          "trades": 47,
+          "pf": 1.862047
+        },
+        "momentum_breakout": {
+          "assets": [
+            "ETH/USDT"
+          ],
+          "net_pnl": 660.243634,
+          "trades": 37,
+          "pf": 2.1105
+        }
+      },
+      "score": 0.22948
+    },
+    {
+      "name": "core_duo_eth_only",
+      "total_return": 0.093907,
+      "final_capital": 10939.067488,
+      "sharpe": 1.568809,
+      "profit_factor": 2.017763,
+      "max_drawdown": 0.016742,
+      "total_trades": 55,
+      "strategy_results": {
+        "funding_mr_v7": {
+          "assets": [
+            "ETH/USDT"
+          ],
+          "net_pnl": 278.823853,
+          "trades": 18,
+          "pf": 1.849732
+        },
+        "momentum_breakout": {
+          "assets": [
+            "ETH/USDT"
+          ],
+          "net_pnl": 660.243634,
+          "trades": 37,
+          "pf": 2.1105
+        }
+      },
+      "score": 0.172956
+    },
+    {
+      "name": "funding_only_eth_xrp",
+      "total_return": 0.074985,
+      "final_capital": 10749.854159,
+      "sharpe": 1.471374,
+      "profit_factor": 2.479111,
+      "max_drawdown": 0.023987,
+      "total_trades": 30,
+      "strategy_results": {
+        "funding_mr_v7": {
+          "assets": [
+            "ETH/USDT",
+            "XRP/USDT"
+          ],
+          "net_pnl": 749.854159,
+          "trades": 30,
+          "pf": 2.479111
+        }
+      },
+      "score": 0.156715
+    },
+    {
+      "name": "funding_only_xrp_eth_sol",
+      "total_return": 0.085722,
+      "final_capital": 10857.216712,
+      "sharpe": 1.298884,
+      "profit_factor": 1.862047,
+      "max_drawdown": 0.033635,
+      "total_trades": 47,
+      "strategy_results": {
+        "funding_mr_v7": {
+          "assets": [
+            "ETH/USDT",
+            "SOL/USDT",
+            "XRP/USDT"
+          ],
+          "net_pnl": 857.216712,
+          "trades": 47,
+          "pf": 1.862047
+        }
+      },
+      "score": 0.145112
+    },
+    {
+      "name": "momentum_only",
+      "total_return": 0.066024,
+      "final_capital": 10660.243634,
+      "sharpe": 1.363736,
+      "profit_factor": 2.1105,
+      "max_drawdown": 0.019115,
+      "total_trades": 37,
+      "strategy_results": {
+        "momentum_breakout": {
+          "assets": [
+            "ETH/USDT"
+          ],
+          "net_pnl": 660.243634,
+          "trades": 37,
+          "pf": 2.1105
+        }
+      },
+      "score": 0.139589
+    }
+  ],
+  "best_candidate": {
+    "name": "eth_xrp_focus",
+    "total_return": 0.19666,
+    "final_capital": 11966.598906,
+    "sharpe": 1.886746,
+    "profit_factor": 2.452989,
+    "max_drawdown": 0.038299,
+    "total_trades": 89,
+    "strategy_results": {
+      "funding_mr_v7": {
+        "assets": [
+          "ETH/USDT",
+          "XRP/USDT"
+        ],
+        "net_pnl": 749.854159,
+        "trades": 30,
+        "pf": 2.479111
+      },
+      "momentum_breakout": {
+        "assets": [
+          "ETH/USDT"
+        ],
+        "net_pnl": 660.243634,
+        "trades": 37,
+        "pf": 2.1105
+      },
+      "extreme_spike": {
+        "assets": [
+          "XRP/USDT"
+        ],
+        "net_pnl": 275.399699,
+        "trades": 7,
+        "pf": 4.100043
+      },
+      "contrarian_asym": {
+        "assets": [
+          "XRP/USDT"
+        ],
+        "net_pnl": 281.101414,
+        "trades": 15,
+        "pf": 2.723085
+      }
+    },
+    "score": 0.283173
+  }
+}

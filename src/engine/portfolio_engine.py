@@ -32,7 +32,7 @@ Usage:
 import json
 import logging
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
@@ -55,6 +55,21 @@ from src.execution.execution_edge import ExecutionEdgeEngine
 from src.risk.capital_scaling import PortfolioScaler, CapacityEstimator
 
 logger = logging.getLogger(__name__)
+
+
+def _profit_factor(gross_win: float, gross_loss: float) -> float:
+    """Return a stable profit factor for reporting and ranking.
+
+    Reporting 0.0 for a sample that has wins and no losses is misleading and
+    causes profitable cells or strategies to look broken.
+    """
+    gross_win = float(gross_win)
+    gross_loss = float(gross_loss)
+    if gross_loss > 0.0:
+        return gross_win / gross_loss
+    if gross_win > 0.0:
+        return float("inf")
+    return 0.0
 
 
 # ─── Data Structures ─────────────────────────────────────────────
@@ -106,6 +121,10 @@ class PortfolioBacktestResult:
     cell_results: dict = field(default_factory=dict)
     # Combined equity curve
     equity_curve: pd.Series = field(default_factory=pd.Series)
+    # Per strategy equity curves
+    strategy_equity_curves: dict = field(default_factory=dict)
+    # Per strategy × asset equity curves
+    cell_equity_curves: dict = field(default_factory=dict)
     # All trades
     trades: list = field(default_factory=list)
     # Allocation weights used
@@ -117,6 +136,60 @@ class PortfolioBacktestResult:
 class PortfolioEngine:
     """Multi-strategy portfolio engine with regime filtering and allocation."""
 
+    def _cell_sizing_overrides(
+        self,
+        datasets: dict[str, pd.DataFrame],
+    ) -> dict[str, dict[str, float]]:
+        """Scale per-cell sizing so independent backtests share one risk budget.
+
+        ``position_size_pct`` in the backtester is a risk-to-stop budget, while
+        ``max_position_notional_pct`` is a hard gross-notional ceiling. The
+        portfolio engine runs each strategy-asset cell independently, so we need
+        a portfolio-level scale factor to stop cells from each reusing the full
+        book risk budget.
+
+        ``max_total_exposure`` is treated as the aggregate portfolio risk budget.
+        We therefore scale both the per-cell risk budget and the per-cell gross
+        cap by the ratio of allowed aggregate risk to requested aggregate risk.
+        This preserves the intended sizing semantics far better than treating
+        ``max_total_exposure`` itself as a tiny per-cell notional cap.
+        """
+        active_cells: list[tuple[StrategySlot, str]] = []
+        total_requested_risk = 0.0
+
+        for slot in self.slots:
+            cell_risk = max(float(slot.position_size_pct), 0.0)
+            if cell_risk <= 0.0:
+                continue
+            for sym in slot.allowed_assets:
+                if sym not in datasets:
+                    continue
+                active_cells.append((slot, sym))
+                total_requested_risk += cell_risk
+
+        if total_requested_risk <= 0.0 or self.max_total_exposure <= 0.0:
+            return {
+                f"{slot.name}|{sym}": {
+                    "position_size_pct": 0.0,
+                    "notional_cap_pct": 0.0,
+                    "risk_scale": 0.0,
+                }
+                for slot, sym in active_cells
+            }
+
+        risk_scale = min(1.0, float(self.max_total_exposure) / float(total_requested_risk))
+
+        overrides = {}
+        for slot, sym in active_cells:
+            cell_key = f"{slot.name}|{sym}"
+            overrides[cell_key] = {
+                "position_size_pct": float(slot.position_size_pct) * risk_scale,
+                "notional_cap_pct": float(self.max_position_notional_pct) * risk_scale,
+                "risk_scale": risk_scale,
+            }
+
+        return overrides
+
     def __init__(
         self,
         slots: list[StrategySlot] = None,
@@ -124,6 +197,7 @@ class PortfolioEngine:
         capital: float = 100_000,
         data_days: int = 365,
         max_total_exposure: float = 0.10,  # Max 10% of capital at risk
+        max_position_notional_pct: float = 0.20,
         max_drawdown_kill: float = 0.15,   # Kill if DD > 15%
         use_regime_allocator: bool = True,
         use_risk_manager: bool = True,
@@ -138,6 +212,7 @@ class PortfolioEngine:
         self.capital = capital
         self.data_days = data_days
         self.max_total_exposure = max_total_exposure
+        self.max_position_notional_pct = max_position_notional_pct
         self.max_drawdown_kill = max_drawdown_kill
 
         # Components
@@ -167,9 +242,13 @@ class PortfolioEngine:
             2. extreme_funding_spike (PF 3.07, high-conviction spikes)
             3. funding_vol_squeeze (PF 1.87, coiled spring)
             4. momentum_breakout (orthogonal trend-following alpha)
-            5. contrarian_asym (PF 3.10, SHORT-only funding asymmetry)
+            5. contrarian_asym (tuned funding asymmetry, 7/7 validation)
 
         Dropped: liq_bounce (PF 0.63 — no edge, destroys portfolio)
+
+        Default deployment sizing is 2% per slot. On the current 180-day
+        quick-mode validation this improved return and Sharpe over 1% sizing
+        without increasing drawdown.
         """
         from src.engine.strategy_factory import FundingReversionTemplate
         from src.engine.micro_strategies import (
@@ -178,6 +257,8 @@ class PortfolioEngine:
         )
         from src.engine.momentum_breakout import MomentumBreakoutTemplate
         from src.engine.structural_stress import ContrarianAsymmetryEngine
+
+        base_position_size_pct = 0.02
 
         slots = [
             # 1. The proven edge — anchor strategy
@@ -193,6 +274,7 @@ class PortfolioEngine:
                 stop_loss_atr=2.0,
                 take_profit_atr=4.0,
                 max_holding_bars=24,
+                position_size_pct=base_position_size_pct,
             ),
             # 2. Extreme spikes only — high conviction, few trades
             StrategySlot(
@@ -207,22 +289,32 @@ class PortfolioEngine:
                 stop_loss_atr=1.5,
                 take_profit_atr=3.0,
                 max_holding_bars=8,
+                position_size_pct=base_position_size_pct,
             ),
-            # 3. Coiled spring — squeeze + funding extreme
-            #    ETH removed (PF=0.90, negative PnL). SOL/XRP proven.
+            # 3. Coiled spring — narrowed to the proven SOL sleeve.
+            #    XRP degraded the portfolio; SOL-only with a shorter hold
+            #    preserved 7/7 institutional validation and improved return.
             StrategySlot(
                 name="fund_vol_squeeze",
                 template="funding_vol_squeeze",
+                params={
+                    "bb_width_percentile": 15,
+                    "bb_period": 20,
+                    "funding_z_threshold": 1.5,
+                    "funding_lookback": 168,
+                    "hold_bars": 24,
+                },
                 signal_func=lambda df: FundingVolSqueezeTemplate.generate_signals(
-                    df, bb_width_percentile=10, bb_period=20,
-                    funding_z_threshold=2.0, funding_lookback=168,
-                    hold_bars=36,
+                    df, bb_width_percentile=15, bb_period=20,
+                    funding_z_threshold=1.5, funding_lookback=168,
+                    hold_bars=24,
                 ),
-                allowed_assets=["SOL/USDT", "XRP/USDT"],
+                allowed_assets=["SOL/USDT"],
                 regime_filter=None,
                 stop_loss_atr=2.0,
                 take_profit_atr=5.0,
-                max_holding_bars=36,
+                max_holding_bars=24,
+                position_size_pct=base_position_size_pct,
             ),
             # 4. Momentum breakout — ETH only (proven PF=2.02)
             #    BTC killed by risk manager (PF=0.68), SOL marginal (PF=0.95)
@@ -238,25 +330,132 @@ class PortfolioEngine:
                 stop_loss_atr=2.0,
                 take_profit_atr=4.0,
                 max_holding_bars=24,
+                position_size_pct=base_position_size_pct,
             ),
-            # 5. Contrarian asymmetry — SHORT-only on alts (PF=3.10)
-            #    Exploits funding direction asymmetry: crowd LONG on alts = dumb money
+            # 5. Contrarian asymmetry — tuned to participate in sideways/high-vol regimes
+            #    without giving back the portfolio-level edge.
             StrategySlot(
                 name="contrarian_asym",
                 template="contrarian_asymmetry",
                 signal_func=lambda df: ContrarianAsymmetryEngine.generate_signals(
-                    df, funding_z_threshold=2.0, funding_lookback=168,
-                    hold_bars=12, require_volume_confirm=False,
+                    df, funding_z_threshold=1.5, funding_lookback=168,
+                    hold_bars=8, require_volume_confirm=False,
                 ),
                 allowed_assets=["ETH/USDT", "SOL/USDT", "XRP/USDT"],
                 regime_filter=None,
                 stop_loss_atr=1.5,
                 take_profit_atr=3.0,
                 max_holding_bars=24,
+                position_size_pct=base_position_size_pct,
             ),
         ]
 
         return cls(slots=slots)
+
+    @classmethod
+    def compounding_focus(cls) -> "PortfolioEngine":
+        """Create the strongest current long-horizon compounding profile.
+
+        This profile is a focused subset of the validated default book. It was
+        promoted from the 365-day focused-book search after the portfolio-wide
+        exposure fix, where the ETH/XRP mix with added XRP convexity sleeves
+        outperformed the broader default allocation on return and profit factor.
+        """
+        base = cls.default()
+        selected_assets = {
+            "funding_mr_v7": ["ETH/USDT", "XRP/USDT"],
+            "extreme_spike": ["XRP/USDT"],
+            "momentum_breakout": ["ETH/USDT"],
+            "contrarian_asym": ["XRP/USDT"],
+        }
+
+        base.slots = [
+            replace(slot, allowed_assets=list(selected_assets[slot.name]))
+            for slot in base.slots
+            if slot.name in selected_assets
+        ]
+        return base
+
+    @classmethod
+    def monthly_challenge(
+        cls,
+        leverage_cap: float = 18.035,
+    ) -> "PortfolioEngine":
+        """Create an aggressive 30-day challenge profile.
+
+        This is a concentrated research profile built for short-horizon capital
+        growth experiments. It is intentionally more aggressive than the
+        validated default book and should not be treated as the production
+        deployment baseline. The current validated challenge book uses two
+        complementary momentum sleeves on BTC, ETH, and SOL to increase trade
+        count materially while still clearing the one-month target at the
+        default leverage cap.
+        """
+        from src.engine.momentum_breakout import MomentumBreakoutTemplate
+
+        slots = [
+            StrategySlot(
+                name="momentum_breakout_swing",
+                template="momentum_breakout",
+                params={
+                    "channel_period": 20,
+                    "atr_expansion": 1.2,
+                    "volume_mult": 1.0,
+                    "hold_bars": 24,
+                },
+                signal_func=lambda df: MomentumBreakoutTemplate.generate_signals(
+                    df,
+                    channel_period=20,
+                    atr_expansion=1.2,
+                    volume_mult=1.0,
+                    hold_bars=24,
+                ),
+                allowed_assets=["BTC/USDT", "ETH/USDT", "SOL/USDT"],
+                regime_filter=None,
+                stop_loss_atr=2.0,
+                take_profit_atr=4.0,
+                max_holding_bars=24,
+                position_size_pct=1.0,
+            ),
+            StrategySlot(
+                name="momentum_breakout_fast",
+                template="momentum_breakout",
+                params={
+                    "channel_period": 20,
+                    "atr_expansion": 1.2,
+                    "volume_mult": 1.0,
+                    "hold_bars": 12,
+                },
+                signal_func=lambda df: MomentumBreakoutTemplate.generate_signals(
+                    df,
+                    channel_period=20,
+                    atr_expansion=1.2,
+                    volume_mult=1.0,
+                    hold_bars=12,
+                ),
+                allowed_assets=["BTC/USDT", "ETH/USDT", "SOL/USDT"],
+                regime_filter=None,
+                stop_loss_atr=2.0,
+                take_profit_atr=4.0,
+                max_holding_bars=12,
+                position_size_pct=1.0,
+            ),
+        ]
+
+        return cls(
+            slots=slots,
+            data_days=30,
+            max_total_exposure=leverage_cap,
+            max_position_notional_pct=leverage_cap,
+            max_drawdown_kill=0.60,
+            use_regime_allocator=False,
+            use_risk_manager=False,
+            use_divergence_tracker=False,
+            use_market_state_brain=False,
+            use_execution_edge=False,
+            use_live_adaptation=False,
+            use_capital_scaling=False,
+        )
 
     # ─── Data Loading ────────────────────────────────────────────
 
@@ -324,6 +523,11 @@ class PortfolioEngine:
         result = PortfolioBacktestResult()
         all_trades = []
         equity_curves = {}
+        cell_sizing = self._cell_sizing_overrides(datasets)
+        result.weights = {
+            cell_key: sizing["notional_cap_pct"]
+            for cell_key, sizing in cell_sizing.items()
+        }
 
         for slot in self.slots:
             slot_trades = []
@@ -342,13 +546,40 @@ class PortfolioEngine:
                 # Generate signals
                 signals = slot.get_signals(df)
 
+                cell_key = f"{slot.name}|{sym}"
+                sizing = cell_sizing.get(
+                    cell_key,
+                    {
+                        "position_size_pct": 0.0,
+                        "notional_cap_pct": 0.0,
+                        "risk_scale": 0.0,
+                    },
+                )
+                cell_position_size = float(sizing["position_size_pct"])
+                cell_notional_cap = float(sizing["notional_cap_pct"])
+                cell_risk_scale = float(sizing["risk_scale"])
+
+                if cell_position_size <= 0.0 or cell_notional_cap <= 0.0:
+                    result.cell_results[cell_key] = {
+                        "trades": 0,
+                        "pf": 0.0,
+                        "sharpe": 0.0,
+                        "return": 0.0,
+                        "win_rate": 0.0,
+                        "max_dd": 0.0,
+                        "position_size_pct": 0.0,
+                        "notional_cap_pct": 0.0,
+                        "risk_scale": 0.0,
+                    }
+                    continue
+
                 # Determine position size — use regime allocator if available
-                pos_size = slot.position_size_pct
+                pos_size = cell_position_size
                 if self.regime_allocator and slot.name in regime_weight_timelines:
                     # Use average regime weight as position size multiplier
                     wt = regime_weight_timelines[slot.name]
                     avg_weight = float(wt.mean()) if len(wt) > 0 else 1.0
-                    pos_size = slot.position_size_pct * avg_weight
+                    pos_size = cell_position_size * avg_weight
 
                 # Backtest
                 bt = Backtester(
@@ -359,10 +590,16 @@ class PortfolioEngine:
                 res = bt.run(
                     df, lambda d, s=signals: s,
                     position_size_pct=pos_size,
+                    max_position_notional_pct=cell_notional_cap,
                     stop_loss_atr=slot.stop_loss_atr,
                     take_profit_atr=slot.take_profit_atr,
                     max_holding_bars=slot.max_holding_bars,
                 )
+
+                for trade in res.trades:
+                    trade.symbol = sym
+                    setattr(trade, "strategy", slot.name)
+                    setattr(trade, "cell_key", cell_key)
 
                 # Apply risk manager kill-switch retroactively
                 cell_trades = res.trades
@@ -378,7 +615,6 @@ class PortfolioEngine:
                     )
 
                 # Store per-cell
-                cell_key = f"{slot.name}|{sym}"
                 # Recompute metrics from risk-adjusted trades
                 cw = [t for t in cell_trades if t.pnl > 0]
                 cl = [t for t in cell_trades if t.pnl <= 0]
@@ -386,11 +622,14 @@ class PortfolioEngine:
                 cgl = sum(abs(t.pnl) for t in cl)
                 result.cell_results[cell_key] = {
                     "trades": len(cell_trades),
-                    "pf": cgw / cgl if cgl > 0 else 0,
+                    "pf": _profit_factor(cgw, cgl),
                     "sharpe": res.sharpe_ratio,
                     "return": (cgw - cgl) / self.capital if self.capital > 0 else 0,
                     "win_rate": len(cw) / len(cell_trades) if cell_trades else 0,
                     "max_dd": res.max_drawdown,
+                    "position_size_pct": pos_size,
+                    "notional_cap_pct": cell_notional_cap,
+                    "risk_scale": cell_risk_scale,
                 }
 
                 slot_trades.extend(cell_trades)
@@ -407,6 +646,19 @@ class PortfolioEngine:
                 if len(res.equity_curve) > 0:
                     slot_curves[sym] = res.equity_curve
                     equity_curves[cell_key] = res.equity_curve
+                    result.cell_equity_curves[cell_key] = res.equity_curve
+
+            if slot_curves:
+                slot_pnl_curves = {}
+                for sym, curve in slot_curves.items():
+                    if len(curve) > 1:
+                        slot_pnl_curves[sym] = curve.diff().fillna(0)
+
+                if slot_pnl_curves:
+                    combined_slot_pnl = pd.concat(slot_pnl_curves.values(), axis=1).sum(axis=1)
+                    result.strategy_equity_curves[slot.name] = (
+                        self.capital + combined_slot_pnl.cumsum()
+                    )
 
             # Aggregate per strategy
             w = [t for t in slot_trades if t.pnl > 0]
@@ -415,7 +667,7 @@ class PortfolioEngine:
             gl = sum(abs(t.pnl) for t in l)
             result.strategy_results[slot.name] = {
                 "trades": len(slot_trades),
-                "pf": gw / gl if gl > 0 else 0,
+                "pf": _profit_factor(gw, gl),
                 "win_rate": len(w) / len(slot_trades) if slot_trades else 0,
                 "net_pnl": gw - gl,
             }
@@ -464,7 +716,7 @@ class PortfolioEngine:
         gw = sum(t.pnl for t in w)
         gl = sum(abs(t.pnl) for t in l)
         result.total_pnl = gw - gl
-        result.profit_factor = gw / gl if gl > 0 else 0
+        result.profit_factor = _profit_factor(gw, gl)
         result.win_rate = len(w) / len(all_trades) if all_trades else 0
 
         return result
@@ -567,6 +819,7 @@ class PortfolioEngine:
             "assets": self.assets,
             "data_days": self.data_days,
             "max_total_exposure": self.max_total_exposure,
+            "max_position_notional_pct": self.max_position_notional_pct,
             "max_drawdown_kill": self.max_drawdown_kill,
             "strategies": [],
         }

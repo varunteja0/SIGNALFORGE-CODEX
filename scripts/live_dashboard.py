@@ -32,10 +32,20 @@ from plotly.subplots import make_subplots
 # All non-UI logic lives in src.ops.dashboard_data and is unit-tested.
 from src.ops.dashboard_data import (
     DEFAULT_ASSETS as ASSETS,
+    build_live_readiness_snapshot,
     compute_signal_proximity,
+    load_capital_firewall,
+    load_deployment_gate,
     load_divergence,
+    load_drift_intelligence,
+    load_execution_drift,
+    load_health,
     load_journal,
     load_state,
+    load_production_certification,
+    load_stress_field,
+    load_streaming_stress_kernel,
+    load_survivability,
     portfolio_summary,
 )
 
@@ -72,6 +82,22 @@ def main():
 
     state = load_state()
     journal = load_journal()
+    health = load_health()
+    certification = load_production_certification()
+    deployment_gate = load_deployment_gate()
+    drift = load_drift_intelligence()
+    execution_drift = load_execution_drift()
+    capital_firewall = load_capital_firewall()
+    stress_field = load_stress_field()
+    stress_kernel = load_streaming_stress_kernel()
+    stress_context = state.get("stress_context") if isinstance(state.get("stress_context"), dict) else {}
+    survivability = load_survivability()
+    readiness = build_live_readiness_snapshot()
+    readiness_gates = readiness.get("gates", {}) if isinstance(readiness.get("gates"), dict) else {}
+    shadow_live_gate = readiness_gates.get("shadow_live", {}) if isinstance(readiness_gates.get("shadow_live"), dict) else {}
+    probation_live_gate = readiness_gates.get("probation_live", {}) if isinstance(readiness_gates.get("probation_live"), dict) else {}
+    full_live_gate = readiness_gates.get("full_live", {}) if isinstance(readiness_gates.get("full_live"), dict) else {}
+    rollout_plan = readiness.get("rollout_plan", {}) if isinstance(readiness.get("rollout_plan"), dict) else {}
 
     # Top metrics row
     col1, col2, col3, col4, col5 = st.columns(5)
@@ -92,7 +118,58 @@ def main():
     now_ts = time.time()
     secs_to_next = int(3600 - (now_ts % 3600) + 10)
     mins_left = secs_to_next // 60
-    col5.metric("Next Scan", f"{mins_left} min", "PAPER" if state.get("paper_mode", True) else "LIVE")
+    operating_mode = str(state.get("operating_mode", "paper") or "paper").replace("_", " ").upper()
+    col5.metric("Next Scan", f"{mins_left} min", operating_mode)
+
+    st.divider()
+
+    verdict_widget = {
+        "go_full_live": st.success,
+        "go_probation": st.success,
+        "shadow_only": st.warning,
+        "no_go": st.error,
+    }.get(str(readiness.get("overall_verdict", "no_go")), st.info)
+    verdict_widget(str(readiness.get("headline", "Live readiness snapshot is unavailable.")))
+    if rollout_plan.get("summary"):
+        st.caption(str(rollout_plan.get("summary")))
+
+    rcol1, rcol2, rcol3, rcol4, rcol5, rcol6 = st.columns(6)
+    rcol1.metric(
+        "Shadow Live",
+        "GO" if shadow_live_gate.get("allowed") else "NO-GO",
+        str(readiness.get("allowed_mode", "blocked")),
+    )
+    rcol2.metric(
+        "Probation Trades Left",
+        int(probation_live_gate.get("trades_remaining", 0) or 0),
+        f"entry {int(probation_live_gate.get('entry_comparisons_remaining', 0) or 0)}",
+    )
+    rcol3.metric(
+        "Probation Days Left",
+        f"{float(probation_live_gate.get('days_remaining', 0.0) or 0.0):.1f}d",
+        f"exit {int(probation_live_gate.get('exit_comparisons_remaining', 0) or 0)}",
+    )
+    rcol4.metric(
+        "Full-Live Trades Left",
+        int(full_live_gate.get("trades_remaining", 0) or 0),
+        f"entry {int(full_live_gate.get('entry_comparisons_remaining', 0) or 0)}",
+    )
+    rcol5.metric(
+        "Full-Live Days Left",
+        f"{float(full_live_gate.get('days_remaining', 0.0) or 0.0):.1f}d",
+        f"exit {int(full_live_gate.get('exit_comparisons_remaining', 0) or 0)}",
+    )
+    rcol6.metric(
+        "Current Tranche",
+        str(rollout_plan.get("current_stage_label", "Paper / Shadow")),
+        f"${float(rollout_plan.get('starting_size_usd', 0.0) or 0.0):,.2f}",
+    )
+
+    readiness_summaries = readiness.get("one_line_summaries", {}) if isinstance(readiness.get("one_line_summaries"), dict) else {}
+    for key in ["shadow_live", "probation_live", "full_live"]:
+        summary_line = readiness_summaries.get(key)
+        if summary_line:
+            st.caption(str(summary_line))
 
     st.divider()
 
@@ -160,11 +237,20 @@ def main():
                 continue
 
             ticker = sym.split("/")[0]
-            price = snap["price"]
-            fz = snap["funding_zscore"]
-            regime = snap["regime"]
-            st.markdown(f"**{ticker}** ${price:,.2f}")
-            st.caption(f"Regime: {regime} | Funding z: {fz:+.2f}")
+            price = snap.get("price")
+            fz = snap.get("funding_zscore")
+            regime = snap.get("regime")
+
+            if price is None and fz is None and regime in {None, ""}:
+                st.markdown(f"**{ticker}**")
+                st.caption("Snapshot unavailable")
+                continue
+
+            price_text = f"${float(price):,.2f}" if price is not None else "n/a"
+            fz_text = f"{float(fz):+.2f}" if fz is not None else "n/a"
+            regime_text = str(regime or "n/a")
+            st.markdown(f"**{ticker}** {price_text}")
+            st.caption(f"Regime: {regime_text} | Funding z: {fz_text}")
 
             prox = compute_signal_proximity(sym, snap)
 
@@ -178,10 +264,103 @@ def main():
     st.divider()
 
     # ── Tabs ────────────────────────────────────────────────────
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab0, tab1, tab2, tab3, tab4 = st.tabs([
+        "🚦 Readiness",
         "📊 Trade Journal", "📈 Performance",
         "⚠️ Safety & Divergence", "🎛️ Control Panel",
     ])
+
+    with tab0:
+        st.subheader("Live Gate Delta")
+        pcol, fcol = st.columns(2)
+
+        with pcol:
+            st.markdown("**Probation Live**")
+            pg_cols = st.columns(4)
+            pg_cols[0].metric("Status", "GO" if probation_live_gate.get("allowed") else "NO-GO")
+            pg_cols[1].metric("Trades Remaining", int(probation_live_gate.get("trades_remaining", 0) or 0))
+            pg_cols[2].metric("Days Remaining", f"{float(probation_live_gate.get('days_remaining', 0.0) or 0.0):.1f}d")
+            pg_cols[3].metric(
+                "Entry / Exit Left",
+                f"{int(probation_live_gate.get('entry_comparisons_remaining', 0) or 0)} / {int(probation_live_gate.get('exit_comparisons_remaining', 0) or 0)}",
+            )
+            st.caption(str(probation_live_gate.get("summary", "")))
+            if probation_live_gate.get("top_blockers"):
+                for blocker in probation_live_gate.get("top_blockers", []):
+                    st.write(f"- {blocker}")
+
+        with fcol:
+            st.markdown("**Full Live**")
+            fg_cols = st.columns(4)
+            fg_cols[0].metric("Status", "GO" if full_live_gate.get("allowed") else "NO-GO")
+            fg_cols[1].metric("Trades Remaining", int(full_live_gate.get("trades_remaining", 0) or 0))
+            fg_cols[2].metric("Days Remaining", f"{float(full_live_gate.get('days_remaining', 0.0) or 0.0):.1f}d")
+            fg_cols[3].metric(
+                "Entry / Exit Left",
+                f"{int(full_live_gate.get('entry_comparisons_remaining', 0) or 0)} / {int(full_live_gate.get('exit_comparisons_remaining', 0) or 0)}",
+            )
+            st.caption(str(full_live_gate.get("summary", "")))
+            if full_live_gate.get("top_blockers"):
+                for blocker in full_live_gate.get("top_blockers", []):
+                    st.write(f"- {blocker}")
+
+        st.divider()
+        st.subheader("One-Line Verdicts")
+        verdict_rows = []
+        for label, key in [
+            ("Shadow Live", "shadow_live"),
+            ("Probation Live", "probation_live"),
+            ("Full Live", "full_live"),
+        ]:
+            verdict_rows.append({"Scope": label, "Summary": readiness_summaries.get(key, "")})
+        st.dataframe(pd.DataFrame(verdict_rows), use_container_width=True, hide_index=True)
+
+        st.divider()
+        st.subheader("Micro-Capital Rollout")
+        rollout_cols = st.columns(4)
+        rollout_cols[0].metric(
+            "Recommended Stage",
+            str(rollout_plan.get("current_stage_label", "Paper / Shadow")),
+        )
+        rollout_cols[1].metric(
+            "Starting Size",
+            f"${float(rollout_plan.get('starting_size_usd', 0.0) or 0.0):,.2f}",
+            f"per trade {float(rollout_plan.get('effective_per_trade_pct', 0.0) or 0.0):.2%}",
+        )
+        rollout_cols[2].metric(
+            "Pause / Step Back",
+            f"${float(rollout_plan.get('pause_loss_usd', 0.0) or 0.0):,.2f}",
+            f"rollback ${float(rollout_plan.get('step_back_loss_usd', 0.0) or 0.0):,.2f}",
+        )
+        rollout_cols[3].metric(
+            "Hard Halt",
+            f"${float(rollout_plan.get('hard_stop_loss_usd', 0.0) or 0.0):,.2f}",
+            str(readiness.get("capital_firewall_decision", "unknown")),
+        )
+        if rollout_plan.get("stages"):
+            rollout_rows = []
+            for stage in rollout_plan.get("stages", []):
+                rollout_rows.append(
+                    {
+                        "Stage": stage.get("label", stage.get("stage", "")),
+                        "Status": stage.get("status", "locked"),
+                        "Capital": f"{float(stage.get('max_capital_fraction', 0.0) or 0.0):.2%}",
+                        "Exposure": f"{float(stage.get('max_total_exposure_pct', 0.0) or 0.0):.2%}",
+                        "Per Trade": f"{float(stage.get('max_per_trade_pct', 0.0) or 0.0):.2%}",
+                        "Starting Size": f"${float(stage.get('starting_size_usd', 0.0) or 0.0):,.2f}",
+                        "Pause Loss": f"${float(stage.get('pause_loss_usd', 0.0) or 0.0):,.2f}",
+                        "Step-Back Loss": f"${float(stage.get('step_back_loss_usd', 0.0) or 0.0):,.2f}",
+                        "Hard Halt": f"${float(stage.get('hard_stop_loss_usd', 0.0) or 0.0):,.2f}",
+                        "Scale-Up Rule": stage.get("scale_up_rule", ""),
+                        "Stop Conditions": stage.get("stop_conditions", ""),
+                    }
+                )
+            st.dataframe(pd.DataFrame(rollout_rows), use_container_width=True, hide_index=True)
+
+        if readiness.get("missing_artifacts"):
+            with st.expander("Missing Readiness Artifacts", expanded=False):
+                for artifact in readiness.get("missing_artifacts", []):
+                    st.write(f"- {artifact}")
 
     with tab1:
         if journal:
@@ -222,7 +401,7 @@ def main():
             **Your strategies are waiting for:**
             - `funding_mr_v7`: Funding z-score to reach ±3.0
             - `extreme_spike`: Funding z-score to reach ±4.0 in high volatility
-            - `fund_vol_squeeze`: Bollinger squeeze (<10th percentile) + funding extreme
+            - `fund_vol_squeeze`: SOL-only Bollinger squeeze (<15th percentile) + funding z ±1.5
             - `momentum_breakout`: Donchian breakout on ETH with volume + ATR expansion
             """)
 
@@ -330,6 +509,246 @@ def main():
         else:
             st.info("Divergence data will appear after trades are executed.")
 
+        st.divider()
+        st.subheader("Paper Execution Drift Engine")
+        if execution_drift:
+            ed_cols = st.columns(4)
+            ed_cols[0].metric(
+                "Fidelity",
+                f"{float(execution_drift.get('execution_fidelity_score', 0.0)):.1f}/100",
+                str(execution_drift.get("execution_fidelity_level", "unknown")),
+            )
+            ed_cols[1].metric(
+                "Capital Ready",
+                "YES" if execution_drift.get("reliable_for_capital") else "NO",
+                f"shadow {int(execution_drift.get('shadow_compared_trade_count', 0))}",
+            )
+            ed_cols[2].metric(
+                "Miss / Partial",
+                f"{float(execution_drift.get('miss_rate', 0.0)):.0%}",
+                f"partial {float(execution_drift.get('partial_fill_rate', 0.0)):.0%}",
+            )
+            ed_cols[3].metric(
+                "Execution Friction",
+                f"{float(execution_drift.get('avg_entry_slippage_bps', 0.0)):.1f} bps",
+                f"fill {float(execution_drift.get('avg_fill_ratio', 1.0)):.0%}",
+            )
+            st.caption(
+                "Shadow drift: "
+                f"entry={float(execution_drift.get('avg_shadow_entry_delta_bps', 0.0)):.2f}bps | "
+                f"exit={float(execution_drift.get('avg_shadow_exit_delta_bps', 0.0)):.2f}bps | "
+                f"pnl={float(execution_drift.get('avg_shadow_pnl_delta_pct', 0.0)):.2f}%"
+            )
+            if execution_drift.get("reasons"):
+                with st.expander("Why the paper drift engine is blocking capital", expanded=False):
+                    for reason in execution_drift.get("reasons", []):
+                        st.write(f"- {reason}")
+        else:
+            st.info("Execution drift will appear after paper and shadow comparisons accumulate.")
+
+        st.divider()
+        st.subheader("Continuous Adversarial Reality Layer")
+        if stress_kernel:
+            kernel_cols = st.columns(4)
+            kernel_cols[0].metric(
+                "Pressure",
+                f"{float(stress_kernel.get('continuous_pressure_score', 0.0)):.1f}/100",
+                str(stress_kernel.get("pressure_level", "unknown")),
+            )
+            kernel_cols[1].metric(
+                "Trajectory",
+                f"{float(stress_kernel.get('trajectory_novelty_score', 0.0)):.1f}/100",
+                f"transition {float(stress_kernel.get('transition_stress_score', 0.0)):.1f}",
+            )
+            kernel_cols[2].metric(
+                "Execution Friction",
+                f"{float(stress_kernel.get('execution_friction_score', 0.0)):.1f}/100",
+                f"lat p999 {float(stress_kernel.get('latency_p999_ms', 0.0)):.0f}ms",
+            )
+            kernel_cols[3].metric(
+                "Kill Efficiency",
+                f"{float(stress_kernel.get('kill_switch_efficiency', 0.0)):.0%}",
+                f"events {int(stress_kernel.get('kill_switch_event_count', 0))}",
+            )
+
+            policy = stress_kernel.get("probation_live_policy") or {}
+            st.caption(
+                "PLM policy: "
+                f"{policy.get('stage', 'shadow')} | "
+                f"entry={policy.get('entry_action', 'pause_entries')} | "
+                f"capital={float(policy.get('max_capital_fraction', 0.0)):.2%}, "
+                f"exposure={float(policy.get('max_total_exposure_pct', 0.0)):.2%}, "
+                f"per-trade={float(policy.get('max_per_trade_pct', 0.0)):.2%}"
+            )
+
+            if stress_kernel.get("reasons"):
+                with st.expander("Why continuous pressure is elevated", expanded=False):
+                    for reason in stress_kernel.get("reasons", []):
+                        st.write(f"- {reason}")
+            if stress_context:
+                profile = stress_context.get("execution_profile") if isinstance(stress_context.get("execution_profile"), dict) else {}
+                st.caption(
+                    "Runtime field: "
+                    f"collapse={float(stress_context.get('collapse_probability', 0.0)):.0%} in ~{int(stress_context.get('collapse_horizon_ticks', 0) or 0)} ticks | "
+                    f"depth={float(profile.get('book_depth_multiplier', 1.0)):.2f}x, "
+                    f"slip={float(profile.get('slippage_multiplier', 1.0)):.2f}x, "
+                    f"latency={float(profile.get('latency_multiplier', 1.0)):.2f}x"
+                )
+            if stress_field:
+                adversary = stress_field.get("adversarial_input") if isinstance(stress_field.get("adversarial_input"), dict) else {}
+                st.caption(
+                    "Field state: "
+                    f"phase={stress_field.get('phase', 'paper_field')} | "
+                    f"hysteresis={float(stress_field.get('hysteresis_score', 0.0)):.0%} | "
+                    f"propagation={float(stress_field.get('propagation_speed', 1.0)):.2f}x | "
+                    f"latency memory={float(stress_field.get('latency_memory', 0.0)):.0%} | "
+                    f"adversary={float(adversary.get('intensity', 0.0)):.0%}"
+                )
+        else:
+            st.info("Streaming stress kernel output will appear after the runtime pressure field is built.")
+
+        st.divider()
+        st.subheader("Execution Stress & Regime Shock")
+        if survivability:
+            surv_cols = st.columns(4)
+            surv_cols[0].metric(
+                "Survivability",
+                f"{float(survivability.get('survivability_score', 0.0)):.1f}/100",
+                str(survivability.get("survivability_level", "unknown")),
+            )
+            surv_cols[1].metric(
+                "Regime Novelty",
+                f"{float(survivability.get('regime_novelty_score', 0.0)):.1f}/100",
+                str(survivability.get("regime_novelty_level", "unknown")),
+            )
+            surv_cols[2].metric(
+                "Stress Replay",
+                f"{float(survivability.get('execution_stress_score', 0.0)):.1f}/100",
+                f"{float(survivability.get('scenario_pass_rate', 0.0)):.0%} pass",
+            )
+            surv_cols[3].metric(
+                "Halt Latency p95",
+                f"{float(survivability.get('halt_latency_p95_ms', 0.0)):.0f} ms",
+                f"budget {float(survivability.get('halt_latency_budget_ms', 0.0)):.0f} ms",
+            )
+
+            ladder = survivability.get("exposure_ladder") or {}
+            st.caption(
+                "Exposure ladder: "
+                f"{ladder.get('stage', 'shadow')} | "
+                f"capital={float(ladder.get('max_capital_fraction', 0.0)):.2%}, "
+                f"exposure={float(ladder.get('max_total_exposure_pct', 0.0)):.2%}, "
+                f"per-trade={float(ladder.get('max_per_trade_pct', 0.0)):.2%}"
+            )
+
+            if survivability.get("reasons"):
+                with st.expander("Why survivability is constrained", expanded=False):
+                    for reason in survivability.get("reasons", []):
+                        st.write(f"- {reason}")
+        else:
+            st.info("Survivability lab output will appear after the production survivability report runs.")
+
+        st.divider()
+        st.subheader("Production Drift Intelligence")
+        if drift:
+            drift_cols = st.columns(4)
+            drift_cols[0].metric("Risk Score", f"{drift.get('risk_score', 0):.1f}/100", drift.get("risk_level", "unknown"))
+            drift_cols[1].metric(
+                "Gate Flips",
+                int(drift.get("gate_flip_count", 0)),
+                f"{float(drift.get('gate_flip_rate', 0.0)):.0%}",
+            )
+            drift_cols[2].metric(
+                "Green Ratio",
+                f"{float(drift.get('recent_green_ratio', 0.0)):.0%}",
+                f"streak {float(drift.get('current_green_streak_days', 0.0)):.1f}d",
+            )
+            drift_cols[3].metric(
+                "Deployment Mode",
+                str((drift.get("deployment_recommendation") or {}).get("mode", "paper_shadow")),
+                "warning" if drift.get("pre_kill_switch_warning") else "stable",
+            )
+
+            rec = drift.get("deployment_recommendation") or {}
+            if rec.get("mode") in {"micro_live", "scale_up"}:
+                st.caption(
+                    "Recommended caps: "
+                    f"capital={float(rec.get('max_capital_fraction', 0.0)):.1%}, "
+                    f"exposure={float(rec.get('max_total_exposure_pct', 0.0)):.1%}, "
+                    f"per-trade={float(rec.get('max_per_trade_pct', 0.0)):.2%}"
+                )
+
+            if drift.get("reasons"):
+                with st.expander("Why drift risk is elevated", expanded=False):
+                    for reason in drift.get("reasons", []):
+                        st.write(f"- {reason}")
+        else:
+            st.info("Drift intelligence will appear after the production drift report runs.")
+
+        st.divider()
+        st.subheader("Certification Stability")
+        if certification:
+            ccol1, ccol2, ccol3, ccol4, ccol5 = st.columns(5)
+            ccol1.metric("Ready For Live", "YES" if certification.get("ready_for_live") else "NO")
+            ccol2.metric(
+                "Burn-in",
+                f"{float(certification.get('consecutive_green_days', 0.0)):.1f}/{float(certification.get('required_green_days', 0.0)):.1f}d",
+            )
+            ccol3.metric(
+                "Certification Drift",
+                certification.get("drift_risk_level", "unknown"),
+                f"{float(certification.get('drift_risk_score', 0.0)):.1f}/100",
+            )
+            ccol4.metric(
+                "Deployment Gate",
+                str((deployment_gate or {}).get("allowed_mode", "blocked")),
+                "aligned" if (deployment_gate or {}).get("allow_probation_live") or (deployment_gate or {}).get("allow_full_live") else "constrained",
+            )
+            ccol5.metric(
+                "Capital Firewall",
+                str((capital_firewall or {}).get("decision", "unknown")),
+                f"{float((capital_firewall or {}).get('max_total_exposure_pct', 0.0)):.2%}",
+            )
+            st.caption(
+                "Survivability: "
+                f"{float(certification.get('survivability_score', 0.0)):.1f}/100 "
+                f"({certification.get('survivability_level', 'unknown')}) | "
+                f"novelty={float(certification.get('regime_novelty_score', 0.0)):.1f} | "
+                f"stress={float(certification.get('execution_stress_score', 0.0)):.1f} | "
+                f"halt p95={float(certification.get('halt_latency_p95_ms', 0.0)):.0f}ms | "
+                f"ladder={certification.get('recommended_exposure_ladder_step', 'shadow')} | "
+                f"pressure={float(certification.get('continuous_pressure_score', 0.0)):.1f} | "
+                f"plm={certification.get('recommended_probation_mode', 'shadow')} | "
+                f"gate={str((deployment_gate or {}).get('allowed_mode', 'blocked'))}"
+            )
+            if deployment_gate:
+                st.caption(
+                    "Deployment caps: "
+                    f"exposure={float(deployment_gate.get('recommended_max_total_exposure_pct', 0.0)):.2%} | "
+                    f"per-trade={float(deployment_gate.get('recommended_max_per_trade_pct', 0.0)):.2%}"
+                )
+            if capital_firewall:
+                st.caption(
+                    "Firewall caps: "
+                    f"exposure={float(capital_firewall.get('max_total_exposure_pct', 0.0)):.2%} | "
+                    f"per-trade={float(capital_firewall.get('max_per_trade_pct', 0.0)):.2%} | "
+                    f"enforced={'YES' if capital_firewall.get('enforced') else 'NO'}"
+                )
+            if certification.get("reasons"):
+                with st.expander("Certification blockers", expanded=False):
+                    for reason in certification.get("reasons", []):
+                        st.write(f"- {reason}")
+            if deployment_gate and deployment_gate.get("reasons"):
+                with st.expander("Deployment gate blockers", expanded=False):
+                    for reason in deployment_gate.get("reasons", []):
+                        st.write(f"- {reason}")
+            if capital_firewall and capital_firewall.get("reasons"):
+                with st.expander("Capital firewall reasons", expanded=False):
+                    for reason in capital_firewall.get("reasons", []):
+                        st.write(f"- {reason}")
+        else:
+            st.info("Certification status will appear after the certification report runs.")
+
     # ── Control Panel ─────────────────────────────────────────
     with tab4:
         # -- Equity + Drawdown chart --
@@ -424,6 +843,25 @@ def main():
         vcol3.metric("Days Running", days_running, delta=f"/ 30 min" if days_running < 30 else "✅")
         dd_now = (initial - capital) / initial if initial > 0 else 0
         vcol4.metric("Max DD", f"{max(dd_now, 0):.1%}", delta="OK" if dd_now < 0.10 else "watch")
+
+        if drift:
+            st.divider()
+            st.subheader("Probation Path")
+            rec = drift.get("deployment_recommendation") or {}
+            ladder = survivability.get("exposure_ladder") if survivability else {}
+            policy = stress_kernel.get("probation_live_policy") if stress_kernel else {}
+            st.write(
+                "Current recommended mode: "
+                f"{rec.get('mode', 'paper_shadow')} | ladder step: {ladder.get('stage', 'shadow')} | plm: {policy.get('stage', 'shadow')} | firewall: {(capital_firewall or {}).get('decision', 'unknown')}"
+            )
+            for reason in rec.get("reasons", []):
+                st.write(f"- {reason}")
+            for reason in ladder.get("reasons", []):
+                st.write(f"- {reason}")
+            for reason in policy.get("reasons", []):
+                st.write(f"- {reason}")
+            for reason in (capital_firewall or {}).get("reasons", []):
+                st.write(f"- {reason}")
 
         # -- Alert History --
         st.divider()

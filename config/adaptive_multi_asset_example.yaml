@@ -1,0 +1,60 @@
+assets:
+  - symbol: BTC/USDT
+    market_type: crypto
+  - symbol: SPY
+    market_type: equities
+  - symbol: CL1
+    market_type: commodities
+  - symbol: NQ1
+    market_type: indices
+
+strategies:
+  - name: crypto_mean_reversion
+    primitive_name: mean_reversion
+    asset_key: BTC/USDT
+    config:
+      lookback: 48
+      entry_z: 1.6
+      exit_z: 0.35
+    stop_loss_atr: 2.0
+    take_profit_atr: 3.5
+    max_holding_bars: 18
+    position_size_pct: 0.02
+
+  - name: equity_trend_core
+    primitive_name: momentum
+    asset_key: SPY
+    config:
+      breakout_lookback: 40
+      fast: 18
+      slow: 72
+      trend_threshold: 0.28
+    stop_loss_atr: 2.2
+    take_profit_atr: 4.5
+    max_holding_bars: 36
+    position_size_pct: 0.02
+
+  - name: commodity_volatility_break
+    primitive_name: volatility
+    asset_key: CL1
+    config:
+      squeeze_window: 24
+      expansion_mult: 1.18
+      direction_lookback: 10
+    stop_loss_atr: 2.0
+    take_profit_atr: 4.0
+    max_holding_bars: 18
+    position_size_pct: 0.02
+
+  - name: index_liquidity_shock
+    primitive_name: liquidity_shock
+    asset_key: NQ1
+    config:
+      volume_spike: 1.7
+      shock_return: 0.01
+      follow_through: true
+      exit_return: 0.0025
+    stop_loss_atr: 1.8
+    take_profit_atr: 3.2
+    max_holding_bars: 12
+    position_size_pct: 0.02

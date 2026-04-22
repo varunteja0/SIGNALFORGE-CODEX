@@ -1,0 +1,14 @@
+{
+  "generated_at": "2026-04-22T02:26:37.830246+00:00",
+  "trade_count": 0,
+  "compared_trade_count": 0,
+  "missing_shadow_count": 0,
+  "avg_abs_entry_delta_bps": 0.0,
+  "avg_abs_exit_delta_bps": 0.0,
+  "avg_abs_pnl_delta_pct": 0.0,
+  "max_abs_pnl_delta_pct": 0.0,
+  "ready_for_live": false,
+  "reasons": [
+    "No shadow-trade comparisons have been captured yet."
+  ]
+}

@@ -131,6 +131,7 @@ class Backtester:
         df: pd.DataFrame,
         signal_func: Callable,
         position_size_pct: float = 0.02,
+        max_position_notional_pct: float = 0.20,
         stop_loss_atr: float = 2.0,
         take_profit_atr: float = 3.0,
         max_holding_bars: int = 50,
@@ -264,8 +265,9 @@ class Backtester:
                     size = risk_capital / entry_price
                     entry_atr = entry_price * 0.02
 
-                # Cap size by max notional (20% of capital)
-                max_size = (capital * 0.20) / entry_price
+                # Cap size by max notional so aggressive risk sizing still
+                # respects an explicit per-position exposure ceiling.
+                max_size = (capital * max_position_notional_pct) / entry_price
                 size = min(size, max_size)
 
                 commission = entry_price * size * self.commission_pct
@@ -463,6 +465,7 @@ class Backtester:
         return self.run(
             df, signal_func,
             position_size_pct=position_size_pct,
+            max_position_notional_pct=0.20,
             stop_loss_atr=stop_loss_atr,
             take_profit_atr=take_profit_atr,
             max_holding_bars=holding_period * 2,  # Allow 2x holding for SL/TP

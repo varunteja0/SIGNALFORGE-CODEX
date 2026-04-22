@@ -11,8 +11,9 @@ Runs the complete institutional validation suite:
     6. Final scorecard with pass/fail verdicts
 
 Usage:
-    python scripts/run_institutional.py           # Full validation
-    python scripts/run_institutional.py --quick    # Quick mode (180 days)
+    python scripts/run_institutional.py                     # Slot engine
+    python scripts/run_institutional.py --engine opportunity  # Opportunity engine
+    python scripts/run_institutional.py --quick             # Quick mode
 """
 
 import argparse
@@ -34,33 +35,58 @@ def main():
     parser = argparse.ArgumentParser(description="Institutional Validation Suite")
     parser.add_argument("--quick", action="store_true", help="Quick mode (180 days)")
     parser.add_argument("--capital", type=float, default=100_000, help="Capital ($)")
+    parser.add_argument(
+        "--engine",
+        choices=["opportunity", "slots"],
+        default="slots",
+        help="Which engine to run",
+    )
     args = parser.parse_args()
+
+    if args.engine == "opportunity":
+        from src.engine.opportunity_engine import OpportunityEngine
+
+        logger.info("Initializing Institutional Opportunity Engine...")
+        engine = OpportunityEngine.default()
+        engine.config.initial_capital = args.capital
+        if args.quick:
+            engine.config.data_days = 180
+
+        logger.info("Loading enriched data...")
+        datasets = engine.load_data()
+        logger.info(f"Loaded {len(datasets)} assets")
+
+        logger.info("Running opportunity-engine institutional backtest...")
+        result = engine.backtest(datasets)
+        output = engine.report(result)
+        out_path = "pipeline_output/institutional_opportunity_report.txt"
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        with open(out_path, "w") as f:
+            f.write(output)
+        print(output)
+        logger.info(f"Report saved to {out_path}")
+        return
 
     from src.engine.portfolio_engine import PortfolioEngine
     from src.engine.institutional import InstitutionalValidator
 
-    # Initialize
     logger.info("Initializing Multi-Strategy Portfolio Engine...")
     engine = PortfolioEngine.default()
     engine.capital = args.capital
     if args.quick:
         engine.data_days = 180
 
-    # Load data
     logger.info("Loading data...")
     datasets = engine.load_data()
     logger.info(f"Loaded {len(datasets)} assets")
 
-    # Run validation
     logger.info("Running institutional validation suite...")
     validator = InstitutionalValidator()
     report = validator.validate(engine, datasets)
 
-    # Format and print
     output = validator.format_report(report, engine)
     print(output)
 
-    # Save
     out_path = "pipeline_output/institutional_report.txt"
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w") as f:

@@ -1,0 +1,10 @@
+{
+  "generated_at": "2026-04-22T02:26:37.830218+00:00",
+  "trade_count": 0,
+  "total_notional_usd": 0.0,
+  "avg_abs_entry_diff_bps": 0.0,
+  "avg_abs_exit_diff_bps": 0.0,
+  "unexplained_pnl_bps": 0.0,
+  "verdict": "PASS",
+  "reasons": []
+}

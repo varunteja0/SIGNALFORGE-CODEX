@@ -1,0 +1,37 @@
+{
+  "generated_at": "2026-04-22T02:26:37.836666+00:00",
+  "history_points": 2,
+  "regime_novelty_score": 100.0,
+  "regime_novelty_level": "insufficient_history",
+  "regime_shift_detected": true,
+  "execution_stress_score": 100.0,
+  "scenario_pass_rate": 0.0,
+  "scenario_count": 0,
+  "worst_case_additional_drag_bps": 0.0,
+  "worst_case_fill_ratio": 0.0,
+  "worst_case_rejection_rate": 0.0,
+  "worst_case_capital_drag_pct": 0.0,
+  "halt_latency_budget_ms": 500.0,
+  "halt_latency_median_ms": 0.0,
+  "halt_latency_p95_ms": 0.0,
+  "halt_latency_breached": true,
+  "survivability_score": 0.0,
+  "survivability_level": "critical",
+  "predicted_survivability_failure": true,
+  "exposure_ladder": {
+    "stage": "blocked",
+    "max_capital_fraction": 0.0,
+    "max_total_exposure_pct": 0.0,
+    "max_per_trade_pct": 0.0,
+    "requires_manual_approval": true,
+    "reasons": [
+      "Survivability lab predicts the system will not tolerate unseen stress cleanly."
+    ]
+  },
+  "scenarios": [],
+  "reasons": [
+    "Regime novelty baseline has only 2 snapshots; require 72 before capital exposure.",
+    "Execution stress lab has no recent trade evidence to replay.",
+    "Survivability score is 0.0/100, below the 65.0 minimum."
+  ]
+}

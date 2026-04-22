@@ -1,0 +1,163 @@
+{
+  "generated_at": "2026-04-22T02:26:37.832515+00:00",
+  "all_passed": true,
+  "scenario_count": 7,
+  "passed_count": 7,
+  "results": [
+    {
+      "name": "heartbeat_timeout",
+      "passed": true,
+      "severity": "critical",
+      "observed_status": "critical",
+      "should_halt": true,
+      "details": {
+        "halt_reason": "No heartbeat for 30s (limit: 5s)"
+      }
+    },
+    {
+      "name": "ledger_tamper",
+      "passed": true,
+      "severity": "critical",
+      "observed_status": "critical",
+      "should_halt": true,
+      "details": {
+        "halt_reason": "LEDGER TAMPERED \u2014 hash chain broken"
+      }
+    },
+    {
+      "name": "stale_feed_detection",
+      "passed": true,
+      "severity": "warning",
+      "observed_status": "warning",
+      "should_halt": false,
+      "details": {
+        "checks": [
+          "Stale data: 120s old (limit: 30s)"
+        ]
+      }
+    },
+    {
+      "name": "missing_broker_position",
+      "passed": true,
+      "severity": "critical",
+      "observed_status": "critical",
+      "should_halt": true,
+      "details": {
+        "generated_at": "2026-04-22T02:26:37.832331+00:00",
+        "overall_status": "critical",
+        "critical_issue_count": 1,
+        "warning_issue_count": 0,
+        "missing_broker_positions": 1,
+        "unknown_broker_positions": 0,
+        "size_mismatch_count": 0,
+        "stale_open_orders": 0,
+        "critical_symbols": [
+          "BTC/USDT"
+        ],
+        "issues": [
+          {
+            "severity": "critical",
+            "code": "missing_broker_position",
+            "message": "System tracks an open position that is absent at the broker.",
+            "symbol": "BTC/USDT",
+            "details": {}
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown_broker_position",
+      "passed": true,
+      "severity": "critical",
+      "observed_status": "critical",
+      "should_halt": true,
+      "details": {
+        "generated_at": "2026-04-22T02:26:37.832401+00:00",
+        "overall_status": "critical",
+        "critical_issue_count": 1,
+        "warning_issue_count": 0,
+        "missing_broker_positions": 0,
+        "unknown_broker_positions": 1,
+        "size_mismatch_count": 0,
+        "stale_open_orders": 0,
+        "critical_symbols": [
+          "ETH/USDT"
+        ],
+        "issues": [
+          {
+            "severity": "critical",
+            "code": "unknown_broker_position",
+            "message": "Broker reports an unmanaged live position.",
+            "symbol": "ETH/USDT",
+            "details": {
+              "side": "long",
+              "size": 2.0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "size_mismatch",
+      "passed": true,
+      "severity": "critical",
+      "observed_status": "critical",
+      "should_halt": true,
+      "details": {
+        "generated_at": "2026-04-22T02:26:37.832430+00:00",
+        "overall_status": "critical",
+        "critical_issue_count": 1,
+        "warning_issue_count": 0,
+        "missing_broker_positions": 0,
+        "unknown_broker_positions": 0,
+        "size_mismatch_count": 1,
+        "stale_open_orders": 0,
+        "critical_symbols": [
+          "SOL/USDT"
+        ],
+        "issues": [
+          {
+            "severity": "critical",
+            "code": "size_mismatch",
+            "message": "Broker size diverges materially from internal state.",
+            "symbol": "SOL/USDT",
+            "details": {
+              "system_signed_qty": 1.0,
+              "broker_signed_qty": 0.25,
+              "mismatch_ratio": 0.75
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "stale_protective_order_detection",
+      "passed": true,
+      "severity": "warning",
+      "observed_status": "warning",
+      "should_halt": false,
+      "details": {
+        "generated_at": "2026-04-22T02:26:37.832479+00:00",
+        "overall_status": "warning",
+        "critical_issue_count": 0,
+        "warning_issue_count": 1,
+        "missing_broker_positions": 0,
+        "unknown_broker_positions": 0,
+        "size_mismatch_count": 0,
+        "stale_open_orders": 1,
+        "critical_symbols": [],
+        "issues": [
+          {
+            "severity": "warning",
+            "code": "stale_open_orders",
+            "message": "Protective or working orders have been open longer than the configured SLA.",
+            "symbol": "",
+            "details": {
+              "stale_open_orders": 1
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

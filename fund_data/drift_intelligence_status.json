@@ -1,0 +1,38 @@
+{
+  "generated_at": "2026-04-22T02:26:37.833912+00:00",
+  "current_green_snapshot": false,
+  "risk_score": 18.85245901639344,
+  "risk_level": "low",
+  "pre_kill_switch_warning": false,
+  "predicted_certification_failure": false,
+  "history_points": 18,
+  "recent_green_ratio": 0.0,
+  "gate_flip_count": 0,
+  "gate_flip_rate": 0.0,
+  "current_green_streak_days": 0.0,
+  "longest_green_streak_days": 0.0,
+  "longest_red_streak_hours": 9.373418088555336,
+  "avg_entry_slippage_bps": 0.0,
+  "avg_abs_pnl_divergence_pct": 0.0,
+  "miss_rate": 0.0,
+  "slippage_trend_bps_per_trade": 0.0,
+  "adaptive_pause_rate": 0.0,
+  "allocation_shift_score": 0.0,
+  "disabled_strategy_flip_rate": 0.0,
+  "broker_warning_pressure": 0.0,
+  "deployment_recommendation": {
+    "mode": "paper_shadow",
+    "max_capital_fraction": 0.0,
+    "max_total_exposure_pct": 0.0,
+    "max_per_trade_pct": 0.0,
+    "requires_manual_approval": true,
+    "reasons": [
+      "Core certification snapshot is not green yet."
+    ]
+  },
+  "reasons": [
+    "Recent green ratio 0% is below 85%.",
+    "System health is warning, not fully nominal.",
+    "Shadow execution drift is not fully green."
+  ]
+}

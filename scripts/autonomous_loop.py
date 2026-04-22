@@ -38,6 +38,7 @@ import pandas as pd
 
 from src.data.fetcher import DataFetcher, compute_features
 from src.data.features import compute_all_features
+from src.core.proceed_gate import evaluate_default_slots_engine, format_proceed_decision
 from src.alpha_genome.evolution import AlphaGenomeEngine, EvolvedStrategy
 from src.alpha_genome.ensemble import EnsembleEvolver
 from src.alpha_genome.gene import tree_from_dict, tree_hash
@@ -62,6 +63,17 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger("autonomous")
+
+
+def _run_proceed_gate(capital: float, data_days: int) -> tuple[str, str]:
+    decision, _ = evaluate_default_slots_engine(
+        capital=capital,
+        data_days=min(data_days, 180),
+        use_cache=True,
+        cache_namespace="autonomous_preflight",
+        cache_max_age_hours=1.0,
+    )
+    return decision.status, format_proceed_decision(decision)
 
 # ─── Graceful shutdown ───────────────────────────────────────────
 SHUTDOWN = False
@@ -498,6 +510,11 @@ def main():
                         help="Max cycles (0=infinite)")
     parser.add_argument("--status", action="store_true",
                         help="Show fund performance summary and exit")
+    parser.add_argument(
+        "--skip-proceed-gate",
+        action="store_true",
+        help="Bypass the validated proceed gate before starting the loop",
+    )
     args = parser.parse_args()
 
     # ─── Status mode: just show performance and exit ───
@@ -573,6 +590,13 @@ def main():
                 time.sleep(1)
         except KeyboardInterrupt:
             print("\nCancelled.")
+            return
+
+    if not args.skip_proceed_gate:
+        status, report = _run_proceed_gate(args.capital, args.days)
+        print(report)
+        if status != "PROCEED":
+            logger.error("Proceed gate returned HOLD. Aborting autonomous loop startup.")
             return
 
     loop = AutonomousLoop(

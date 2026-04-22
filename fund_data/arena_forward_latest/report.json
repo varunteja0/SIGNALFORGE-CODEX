@@ -1,0 +1,522 @@
+{
+  "config": {
+    "train_bars": 8760,
+    "test_bars": 720,
+    "step_bars": 720,
+    "n_trials": 13,
+    "max_weight_cap": 0.6
+  },
+  "summary": {
+    "sharpe": -0.18935207992248088,
+    "max_drawdown": -0.23316805584292033,
+    "total_return": -0.07769967535616684,
+    "n_folds": 12.0,
+    "positive_test_fold_frac": 0.5,
+    "mean_test_turnover": 0.00727695086378176,
+    "worst_test_drawdown": -0.1543495401998619,
+    "paper_start": "2025-04-17T18:00:00+00:00",
+    "paper_end": "2026-04-12T17:00:00+00:00"
+  },
+  "selection_counts": {
+    "trend_24_96_e075": 3,
+    "rel_168_s24_sp04": 3,
+    "trend_48_168_e100": 2,
+    "rel_168_s48_sp05": 2,
+    "pull_24_168_e150": 1,
+    "pull_48_240_e150": 1
+  },
+  "folds": [
+    {
+      "fold_id": 0,
+      "train_start": "2024-04-17T18:00:00+00:00",
+      "train_end": "2025-04-17T17:00:00+00:00",
+      "test_start": "2025-04-17T18:00:00+00:00",
+      "test_end": "2025-05-17T17:00:00+00:00",
+      "selected_name": "trend_24_96_e075",
+      "selected_family": "trend",
+      "score": 0.2156121561399533,
+      "weights": {
+        "BTC/USDT": 0.19233708221652868,
+        "ETH/USDT": 0.3130511760781274,
+        "SOL/USDT": 0.49461174170534394
+      },
+      "train_metrics": {
+        "is_sharpe": 1.0773575889718983,
+        "is_deflated_sharpe": 0.0,
+        "is_max_drawdown": -0.15931806889261746,
+        "is_total_return": 0.27819276623799505,
+        "oos_sharpe": 0.832633633204133,
+        "oos_deflated_sharpe": 0.0,
+        "oos_max_drawdown": -0.20016554276601872,
+        "oos_total_return": 0.08302854649028202,
+        "is_fold_sharpe_mean": 1.0329694845289603,
+        "is_fold_sharpe_min": -0.8460819419547109,
+        "is_fold_positive_frac": 0.6,
+        "is_fold_worst_drawdown": -0.1593180688926148,
+        "is_sharpe_cost_1p5x": 0.852331419783116,
+        "is_sharpe_cost_2x": 0.6275703738821027,
+        "mean_turnover": 0.035288525838784585,
+        "max_gross": 1.0,
+        "max_weight": 0.49461174170534394
+      },
+      "test_metrics": {
+        "sharpe": 3.5552447523771002,
+        "max_drawdown": -0.09025056301168588,
+        "total_return": 0.10563438593173524,
+        "mean_turnover": 0.011145029279642811,
+        "max_gross": 1.0
+      }
+    },
+    {
+      "fold_id": 1,
+      "train_start": "2024-05-17T18:00:00+00:00",
+      "train_end": "2025-05-17T17:00:00+00:00",
+      "test_start": "2025-05-17T18:00:00+00:00",
+      "test_end": "2025-06-16T17:00:00+00:00",
+      "selected_name": "trend_24_96_e075",
+      "selected_family": "trend",
+      "score": 0.23003878123999325,
+      "weights": {
+        "BTC/USDT": 0.2236387300084147,
+        "ETH/USDT": 0.18900007296379448,
+        "SOL/USDT": 0.5873611970277908
+      },
+      "train_metrics": {
+        "is_sharpe": 1.182659317178187,
+        "is_deflated_sharpe": 0.0,
+        "is_max_drawdown": -0.16286440073435182,
+        "is_total_return": 0.3237245661781092,
+        "oos_sharpe": 1.6189457891264423,
+        "oos_deflated_sharpe": 0.0,
+        "oos_max_drawdown": -0.2029683819755379,
+        "oos_total_return": 0.1948540994886181,
+        "is_fold_sharpe_mean": 1.195213664216032,
+        "is_fold_sharpe_min": -0.9937495413613879,
+        "is_fold_positive_frac": 0.6,
+        "is_fold_worst_drawdown": -0.15856476811435705,
+        "is_sharpe_cost_1p5x": 0.9658113439394362,
+        "is_sharpe_cost_2x": 0.7492005280503472,
+        "mean_turnover": 0.03546385255531085,
+        "max_gross": 1.0,
+        "max_weight": 0.5873611970277908
+      },
+      "test_metrics": {
+        "sharpe": -2.410870149850286,
+        "max_drawdown": -0.09690171078791954,
+        "total_return": -0.06916603325884696,
+        "mean_turnover": 0.010814095945225519,
+        "max_gross": 1.0
+      }
+    },
+    {
+      "fold_id": 2,
+      "train_start": "2024-06-16T18:00:00+00:00",
+      "train_end": "2025-06-16T17:00:00+00:00",
+      "test_start": "2025-06-16T18:00:00+00:00",
+      "test_end": "2025-07-16T17:00:00+00:00",
+      "selected_name": "trend_24_96_e075",
+      "selected_family": "trend",
+      "score": 0.8338269726736927,
+      "weights": {
+        "BTC/USDT": 0.2323954011499039,
+        "ETH/USDT": 0.1850016183721497,
+        "SOL/USDT": 0.5826029804779463
+      },
+      "train_metrics": {
+        "is_sharpe": 1.915928334188327,
+        "is_deflated_sharpe": 0.0,
+        "is_max_drawdown": -0.16203728378117654,
+        "is_total_return": 0.6535425794721483,
+        "oos_sharpe": -0.6493592980223187,
+        "oos_deflated_sharpe": -0.0,
+        "oos_max_drawdown": -0.2031104046052793,
+        "oos_total_return": -0.09327882135173682,
+        "is_fold_sharpe_mean": 1.8108708017593707,
+        "is_fold_sharpe_min": -0.4669919140260026,
+        "is_fold_positive_frac": 0.8,
+        "is_fold_worst_drawdown": -0.16135161382886898,
+        "is_sharpe_cost_1p5x": 1.7088062517728608,
+        "is_sharpe_cost_2x": 1.5018387675136013,
+        "mean_turnover": 0.034749346677807234,
+        "max_gross": 1.0,
+        "max_weight": 0.5826029804779463
+      },
+      "test_metrics": {
+        "sharpe": -0.7975776813822403,
+        "max_drawdown": -0.1543495401998619,
+        "total_return": -0.032382552503607664,
+        "mean_turnover": 0.015020517352974024,
+        "max_gross": 1.0
+      }
+    },
+    {
+      "fold_id": 3,
+      "train_start": "2024-07-16T18:00:00+00:00",
+      "train_end": "2025-07-16T17:00:00+00:00",
+      "test_start": "2025-07-16T18:00:00+00:00",
+      "test_end": "2025-08-15T17:00:00+00:00",
+      "selected_name": "trend_48_168_e100",
+      "selected_family": "trend",
+      "score": -0.5537066868528381,
+      "weights": {
+        "BTC/USDT": 0.31754741354747335,
+        "ETH/USDT": 0.1434123924582853,
+        "SOL/USDT": 0.5390401939942414
+      },
+      "train_metrics": {
+        "is_sharpe": 0.11355439404072964,
+        "is_deflated_sharpe": 0.0,
+        "is_max_drawdown": -0.25797926183716013,
+        "is_total_return": -0.02096934738361922,
+        "oos_sharpe": 0.5980219299951707,
+        "oos_deflated_sharpe": 0.0,
+        "oos_max_drawdown": -0.1906986228088563,
+        "oos_total_return": 0.04694957455622317,
+        "is_fold_sharpe_mean": 0.11766907045695577,
+        "is_fold_sharpe_min": -1.5465193987596328,
+        "is_fold_positive_frac": 0.6,
+        "is_fold_worst_drawdown": -0.19103546941007699,
+        "is_sharpe_cost_1p5x": -0.09748924266014775,
+        "is_sharpe_cost_2x": -0.3082259596809117,
+        "mean_turnover": 0.03317609961574238,
+        "max_gross": 1.0,
+        "max_weight": 0.5390401939942414
+      },
+      "test_metrics": {
+        "sharpe": 1.220670356135257,
+        "max_drawdown": -0.07599221930751976,
+        "total_return": 0.03158142769127137,
+        "mean_turnover": 0.010690630310801232,
+        "max_gross": 1.0
+      }
+    },
+    {
+      "fold_id": 4,
+      "train_start": "2024-08-15T18:00:00+00:00",
+      "train_end": "2025-08-15T17:00:00+00:00",
+      "test_start": "2025-08-15T18:00:00+00:00",
+      "test_end": "2025-09-14T17:00:00+00:00",
+      "selected_name": "trend_48_168_e100",
+      "selected_family": "trend",
+      "score": -0.6741484265159217,
+      "weights": {
+        "BTC/USDT": 0.3838775604105287,
+        "ETH/USDT": 0.05617085833350248,
+        "SOL/USDT": 0.5599515812559688
+      },
+      "train_metrics": {
+        "is_sharpe": 0.49525581588410816,
+        "is_deflated_sharpe": 0.0,
+        "is_max_drawdown": -0.193797957129479,
+        "is_total_return": 0.08587300480871396,
+        "oos_sharpe": -0.08671605651067786,
+        "oos_deflated_sharpe": -0.0,
+        "oos_max_drawdown": -0.16711889701029126,
+        "oos_total_return": -0.02626720922183401,
+        "is_fold_sharpe_mean": 0.34302920332868647,
+        "is_fold_sharpe_min": -2.7485570891314386,
+        "is_fold_positive_frac": 0.6,
+        "is_fold_worst_drawdown": -0.14671543078306992,
+        "is_sharpe_cost_1p5x": 0.27090033041778394,
+        "is_sharpe_cost_2x": 0.04690544484483133,
+        "mean_turnover": 0.034563753800056836,
+        "max_gross": 1.0,
+        "max_weight": 0.5599515812559688
+      },
+      "test_metrics": {
+        "sharpe": 0.272535285131524,
+        "max_drawdown": -0.11740872580821737,
+        "total_return": 0.003050007208482919,
+        "mean_turnover": 0.0073437368258234504,
+        "max_gross": 1.0
+      }
+    },
+    {
+      "fold_id": 5,
+      "train_start": "2024-09-14T18:00:00+00:00",
+      "train_end": "2025-09-14T17:00:00+00:00",
+      "test_start": "2025-09-14T18:00:00+00:00",
+      "test_end": "2025-10-14T17:00:00+00:00",
+      "selected_name": "pull_24_168_e150",
+      "selected_family": "pullback",
+      "score": 0.7742950410656284,
+      "weights": {
+        "BTC/USDT": 0.3780044014246581,
+        "ETH/USDT": 0.023148803376331753,
+        "SOL/USDT": 0.5988467951990102
+      },
+      "train_metrics": {
+        "is_sharpe": 1.7356537325292354,
+        "is_deflated_sharpe": 0.0,
+        "is_max_drawdown": -0.07331043033376516,
+        "is_total_return": 0.14722034735724998,
+        "oos_sharpe": -2.0146650326686184,
+        "oos_deflated_sharpe": -0.0,
+        "oos_max_drawdown": -0.08278230481593318,
+        "oos_total_return": -0.06828391229730357,
+        "is_fold_sharpe_mean": 1.8621127759643243,
+        "is_fold_sharpe_min": -0.2958013082554714,
+        "is_fold_positive_frac": 0.8,
+        "is_fold_worst_drawdown": -0.044992432332780274,
+        "is_sharpe_cost_1p5x": 1.3054777358621326,
+        "is_sharpe_cost_2x": 0.8730312250562108,
+        "mean_turnover": 0.02015754082342436,
+        "max_gross": 0.9000000000000001,
+        "max_weight": 0.5988467951990102
+      },
+      "test_metrics": {
+        "sharpe": -3.0461705231551326,
+        "max_drawdown": -0.04342234279513657,
+        "total_return": -0.031419418885534456,
+        "mean_turnover": 0.007610590527251147,
+        "max_gross": 0.8791264355178041
+      }
+    },
+    {
+      "fold_id": 6,
+      "train_start": "2024-10-14T18:00:00+00:00",
+      "train_end": "2025-10-14T17:00:00+00:00",
+      "test_start": "2025-10-14T18:00:00+00:00",
+      "test_end": "2025-11-13T17:00:00+00:00",
+      "selected_name": "rel_168_s24_sp04",
+      "selected_family": "relative",
+      "score": 0.4783929670805268,
+      "weights": {
+        "BTC/USDT": 0.38312821409725334,
+        "ETH/USDT": 0.018841221773950638,
+        "SOL/USDT": 0.598030564128796
+      },
+      "train_metrics": {
+        "is_sharpe": 1.7133232687390534,
+        "is_deflated_sharpe": 0.0,
+        "is_max_drawdown": -0.11221715204359473,
+        "is_total_return": 0.3089528680258238,
+        "oos_sharpe": 0.7310203068085497,
+        "oos_deflated_sharpe": 0.0,
+        "oos_max_drawdown": -0.09464818446478396,
+        "oos_total_return": 0.03948991131679502,
+        "is_fold_sharpe_mean": 1.571167358391151,
+        "is_fold_sharpe_min": -1.299860840449508,
+        "is_fold_positive_frac": 0.6,
+        "is_fold_worst_drawdown": -0.11221715204359406,
+        "is_sharpe_cost_1p5x": 1.583295581768377,
+        "is_sharpe_cost_2x": 1.4531999657489816,
+        "mean_turnover": 0.012184841554454325,
+        "max_gross": 0.9811587782260494,
+        "max_weight": 0.598030564128796
+      },
+      "test_metrics": {
+        "sharpe": -1.962597943610181,
+        "max_drawdown": -0.08067527328967228,
+        "total_return": -0.031792826060297985,
+        "mean_turnover": 0.004247688220850724,
+        "max_gross": 0.7780992485766531
+      }
+    },
+    {
+      "fold_id": 7,
+      "train_start": "2024-11-13T18:00:00+00:00",
+      "train_end": "2025-11-13T17:00:00+00:00",
+      "test_start": "2025-11-13T18:00:00+00:00",
+      "test_end": "2025-12-13T17:00:00+00:00",
+      "selected_name": "rel_168_s24_sp04",
+      "selected_family": "relative",
+      "score": -0.15660720604424902,
+      "weights": {
+        "BTC/USDT": 0.5670373432581067,
+        "ETH/USDT": 0.042327214971999046,
+        "SOL/USDT": 0.3906354417698941
+      },
+      "train_metrics": {
+        "is_sharpe": 1.5188310446866469,
+        "is_deflated_sharpe": 0.0,
+        "is_max_drawdown": -0.09183247072945577,
+        "is_total_return": 0.1875357789000669,
+        "oos_sharpe": 1.0309846067407598,
+        "oos_deflated_sharpe": 0.0,
+        "oos_max_drawdown": -0.07340847031711584,
+        "oos_total_return": 0.04913009798009993,
+        "is_fold_sharpe_mean": 1.2881879432864056,
+        "is_fold_sharpe_min": -3.518918429493573,
+        "is_fold_positive_frac": 0.8,
+        "is_fold_worst_drawdown": -0.08159506647053505,
+        "is_sharpe_cost_1p5x": 1.339236555481393,
+        "is_sharpe_cost_2x": 1.159563850773114,
+        "mean_turnover": 0.01241469659808984,
+        "max_gross": 0.9576727850280009,
+        "max_weight": 0.5670373432581067
+      },
+      "test_metrics": {
+        "sharpe": -1.664306086261269,
+        "max_drawdown": -0.11500344379357819,
+        "total_return": -0.03169591706560104,
+        "mean_turnover": 0.004289428958496857,
+        "max_gross": 0.820785037995971
+      }
+    },
+    {
+      "fold_id": 8,
+      "train_start": "2024-12-13T18:00:00+00:00",
+      "train_end": "2025-12-13T17:00:00+00:00",
+      "test_start": "2025-12-13T18:00:00+00:00",
+      "test_end": "2026-01-12T17:00:00+00:00",
+      "selected_name": "rel_168_s48_sp05",
+      "selected_family": "relative",
+      "score": -0.34273494280472855,
+      "weights": {
+        "BTC/USDT": 0.3143589847433289,
+        "ETH/USDT": 0.3232033003989413,
+        "SOL/USDT": 0.3624377148577297
+      },
+      "train_metrics": {
+        "is_sharpe": 0.7986619555142547,
+        "is_deflated_sharpe": 0.0,
+        "is_max_drawdown": -0.11153868896188401,
+        "is_total_return": 0.07952923253895872,
+        "oos_sharpe": 1.4217136385906897,
+        "oos_deflated_sharpe": 0.0,
+        "oos_max_drawdown": -0.07132427486887638,
+        "oos_total_return": 0.06294413128565757,
+        "is_fold_sharpe_mean": 0.7060878496237183,
+        "is_fold_sharpe_min": -2.555196902434667,
+        "is_fold_positive_frac": 0.4,
+        "is_fold_worst_drawdown": -0.07525489888405612,
+        "is_sharpe_cost_1p5x": 0.629974988275188,
+        "is_sharpe_cost_2x": 0.46135623207021814,
+        "mean_turnover": 0.00949668266616631,
+        "max_gross": 0.685641015256671,
+        "max_weight": 0.3624377148577297
+      },
+      "test_metrics": {
+        "sharpe": 0.9141189811146895,
+        "max_drawdown": -0.030216946907440922,
+        "total_return": 0.009100096953533532,
+        "mean_turnover": 0.004403461642979767,
+        "max_gross": 0.685641015256671
+      }
+    },
+    {
+      "fold_id": 9,
+      "train_start": "2025-01-12T18:00:00+00:00",
+      "train_end": "2026-01-12T17:00:00+00:00",
+      "test_start": "2026-01-12T18:00:00+00:00",
+      "test_end": "2026-02-11T17:00:00+00:00",
+      "selected_name": "rel_168_s24_sp04",
+      "selected_family": "relative",
+      "score": 1.5782252348769021,
+      "weights": {
+        "BTC/USDT": 0.5650900612933407,
+        "ETH/USDT": 0.16505919562632523,
+        "SOL/USDT": 0.2698507430803342
+      },
+      "train_metrics": {
+        "is_sharpe": 2.3452264496903306,
+        "is_deflated_sharpe": 0.0,
+        "is_max_drawdown": -0.07313747052762243,
+        "is_total_return": 0.22960917954030546,
+        "oos_sharpe": -0.1427465360830689,
+        "oos_deflated_sharpe": -0.0,
+        "oos_max_drawdown": -0.11925289126173977,
+        "oos_total_return": -0.011035248330667935,
+        "is_fold_sharpe_mean": 2.3272288463161064,
+        "is_fold_sharpe_min": 1.0729244137900642,
+        "is_fold_positive_frac": 1.0,
+        "is_fold_worst_drawdown": -0.04811132547432673,
+        "is_sharpe_cost_1p5x": 2.1020937235614787,
+        "is_sharpe_cost_2x": 1.8587818916734185,
+        "mean_turnover": 0.012373251919910962,
+        "max_gross": 0.8349408043736749,
+        "max_weight": 0.5650900612933407
+      },
+      "test_metrics": {
+        "sharpe": 2.3920988405315002,
+        "max_drawdown": -0.029918635537597993,
+        "total_return": 0.024772673067910977,
+        "mean_turnover": 0.004417512226540708,
+        "max_gross": 0.8349408043736749
+      }
+    },
+    {
+      "fold_id": 10,
+      "train_start": "2025-02-11T18:00:00+00:00",
+      "train_end": "2026-02-11T17:00:00+00:00",
+      "test_start": "2026-02-11T18:00:00+00:00",
+      "test_end": "2026-03-13T17:00:00+00:00",
+      "selected_name": "pull_48_240_e150",
+      "selected_family": "pullback",
+      "score": -0.46872814281826813,
+      "weights": {
+        "BTC/USDT": 0.11400122713742254,
+        "ETH/USDT": 0.5240326474252675,
+        "SOL/USDT": 0.36196612543730994
+      },
+      "train_metrics": {
+        "is_sharpe": 0.619744937318403,
+        "is_deflated_sharpe": 0.0,
+        "is_max_drawdown": -0.07646432286223259,
+        "is_total_return": 0.056180208980685764,
+        "oos_sharpe": 2.095058547091581,
+        "oos_deflated_sharpe": 0.0,
+        "oos_max_drawdown": -0.04285059867791563,
+        "oos_total_return": 0.0766124227057916,
+        "is_fold_sharpe_mean": 0.648839949045293,
+        "is_fold_sharpe_min": -2.215029012039301,
+        "is_fold_positive_frac": 0.4,
+        "is_fold_worst_drawdown": -0.07003367480744338,
+        "is_sharpe_cost_1p5x": 0.217607030647597,
+        "is_sharpe_cost_2x": -0.18559140140842614,
+        "mean_turnover": 0.02182949380255363,
+        "max_gross": 0.8999999999999999,
+        "max_weight": 0.5240326474252675
+      },
+      "test_metrics": {
+        "sharpe": -6.442329818531072,
+        "max_drawdown": -0.0655968705083918,
+        "total_return": -0.06038253824594153,
+        "mean_turnover": 0.0036905733848332394,
+        "max_gross": 0.7742450692590062
+      }
+    },
+    {
+      "fold_id": 11,
+      "train_start": "2025-03-13T18:00:00+00:00",
+      "train_end": "2026-03-13T17:00:00+00:00",
+      "test_start": "2026-03-13T18:00:00+00:00",
+      "test_end": "2026-04-12T17:00:00+00:00",
+      "selected_name": "rel_168_s48_sp05",
+      "selected_family": "relative",
+      "score": 1.5163410990536903,
+      "weights": {
+        "BTC/USDT": 0.5436958769223319,
+        "ETH/USDT": 0.44674322890826007,
+        "SOL/USDT": 0.009560894169408089
+      },
+      "train_metrics": {
+        "is_sharpe": 2.53037719011609,
+        "is_deflated_sharpe": 0.0,
+        "is_max_drawdown": -0.06239848123990421,
+        "is_total_return": 0.3620437788910913,
+        "oos_sharpe": -4.590149780254259,
+        "oos_deflated_sharpe": -0.45497597700524484,
+        "oos_max_drawdown": -0.2514096213575485,
+        "oos_total_return": -0.22594045866743262,
+        "is_fold_sharpe_mean": 2.45205899737342,
+        "is_fold_sharpe_min": 0.2025347871545492,
+        "is_fold_positive_frac": 1.0,
+        "is_fold_worst_drawdown": -0.06127589058941574,
+        "is_sharpe_cost_1p5x": 2.40333336412468,
+        "is_sharpe_cost_2x": 2.2761895120649065,
+        "mean_turnover": 0.010388435757974103,
+        "max_gross": 0.9904391058305919,
+        "max_weight": 0.5436958769223319
+      },
+      "test_metrics": {
+        "sharpe": 1.0494229983448042,
+        "max_drawdown": -0.0642201273539279,
+        "total_return": 0.014448796611567616,
+        "mean_turnover": 0.0036501456899616304,
+        "max_gross": 0.9904391058305919
+      }
+    }
+  ]
+}

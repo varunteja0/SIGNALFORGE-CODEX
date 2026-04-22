@@ -117,14 +117,16 @@ def scan_signals():
             z4_ready = "N/A (BTC excluded)"
         print(f"    extreme_spike:     [{z4_bar}] {z4_pct:5.1f}% — {z4_ready}")
 
-        # 3. fund_vol_squeeze: needs bb_pctile <= 10 + |funding_z| >= 2.0
-        sq_pct = max(0, (1 - bb_pctile / 10) * 100) if bb_pctile <= 10 else 0
-        fz2_pct = min(abs(fr_zscore) / 2.0 * 100, 100)
+        # 3. fund_vol_squeeze: needs bb_pctile <= 15 + |funding_z| >= 1.5 on SOL only
+        sq_pct = 100.0 if bb_pctile <= 15 else min(15.0 / max(bb_pctile, 1e-10) * 100, 100)
+        fz2_pct = min(abs(fr_zscore) / 1.5 * 100, 100)
         combo = min(sq_pct, fz2_pct)
         sq_bar = "█" * int(combo / 5) + "░" * (20 - int(combo / 5))
-        sq_ready = "✓ ACTIVE" if bb_pctile <= 10 and abs(fr_zscore) >= 2.0 else f"squeeze={sq_pct:.0f}% funding={fz2_pct:.0f}%"
-        if sym == "BTC/USDT":
-            sq_ready = "N/A (BTC excluded)"
+        sq_ready = "✓ ACTIVE" if sym == "SOL/USDT" and bb_pctile <= 15 and abs(fr_zscore) >= 1.5 else f"squeeze={sq_pct:.0f}% funding={fz2_pct:.0f}%"
+        if sym != "SOL/USDT":
+            sq_ready = "N/A (SOL only)"
+            combo = 0.0
+            sq_bar = "░" * 20
         print(f"    fund_vol_squeeze:  [{sq_bar}] {combo:5.1f}% — {sq_ready}")
 
         # 4. momentum_breakout: needs breakout + ATR expansion + volume

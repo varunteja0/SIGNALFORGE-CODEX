@@ -34,6 +34,12 @@ JOURNAL = ROOT / "fund_data" / "trade_journal.json"
 STATE = ROOT / "fund_data" / "live_state.json"
 DIVERGENCE = ROOT / "fund_data" / "divergence_log.json"
 ALERT_LOG = ROOT / "fund_data" / "alert_log.json"
+STRESS_KERNEL = ROOT / "fund_data" / "streaming_stress_kernel_status.json"
+STRESS_FIELD = ROOT / "fund_data" / "stress_field_state.json"
+STRESS_CONTEXT = ROOT / "fund_data" / "stress_context_status.json"
+DEPLOYMENT_GATE = ROOT / "fund_data" / "deployment_gate_status.json"
+EXECUTION_DRIFT = ROOT / "fund_data" / "execution_drift_status.json"
+CAPITAL_FIREWALL = ROOT / "fund_data" / "capital_firewall_status.json"
 
 # ── Config ───────────────────────────────────────────────────────
 
@@ -148,6 +154,13 @@ class AlertMonitor:
         self.div_alerted = set()   # trade IDs already alerted for divergence
         self.stale_alerted = False
         self.last_state_mtime = 0
+        self.last_pressure_level = ""
+        self.last_probation_stage = ""
+        self.last_collapse_horizon = 0
+        self.last_adversarial_band = ""
+        self.last_deployment_mode = ""
+        self.last_execution_ready: bool | None = None
+        self.last_firewall_decision = ""
 
     def check_trades(self, journal: list, state: dict):
         """Alert on new trade entries and exits."""
@@ -310,6 +323,123 @@ class AlertMonitor:
         elif age_min <= STALE_MINUTES:
             self.stale_alerted = False
 
+    def check_streaming_stress(self):
+        """Alert on continuous pressure spikes and PLM stage changes."""
+        payload = read_json(STRESS_KERNEL)
+        if not isinstance(payload, dict):
+            return
+
+        level = str(payload.get("pressure_level", ""))
+        score = float(payload.get("continuous_pressure_score", 0.0) or 0.0)
+        policy = payload.get("probation_live_policy") if isinstance(payload.get("probation_live_policy"), dict) else {}
+        stage = str(policy.get("stage", "shadow"))
+
+        if level in {"high", "critical"} and level != self.last_pressure_level:
+            alert(
+                "Continuous Pressure Spike",
+                f"Streaming stress kernel is {level} at {score:.1f}/100",
+                level="critical" if level == "critical" else "warning",
+            )
+        if stage != self.last_probation_stage and stage:
+            alert(
+                "Probation Mode Shift",
+                f"Streaming stress kernel moved to {stage}",
+                level="warning" if stage in {"shadow", "blocked"} else "info",
+            )
+
+        self.last_pressure_level = level
+        self.last_probation_stage = stage
+
+        context_payload = read_json(STRESS_CONTEXT)
+        if not isinstance(context_payload, dict):
+            return
+        collapse_horizon = int(context_payload.get("collapse_horizon_ticks", 0) or 0)
+        collapse_probability = float(context_payload.get("collapse_probability", 0.0) or 0.0)
+        if 0 < collapse_horizon <= 2 and collapse_horizon != self.last_collapse_horizon:
+            alert(
+                "Collapse Manifold Nearby",
+                f"Stress field predicts a collapse manifold within {collapse_horizon} ticks ({collapse_probability:.0%} probability)",
+                level="critical" if collapse_horizon == 1 else "warning",
+            )
+        self.last_collapse_horizon = collapse_horizon
+
+        field_payload = read_json(STRESS_FIELD)
+        if not isinstance(field_payload, dict):
+            return
+        adversarial = field_payload.get("adversarial_input") if isinstance(field_payload.get("adversarial_input"), dict) else {}
+        intensity = float(adversarial.get("intensity", 0.0) or 0.0)
+        if intensity >= 0.70:
+            band = "high"
+        elif intensity >= 0.45:
+            band = "moderate"
+        else:
+            band = "low"
+        if band in {"moderate", "high"} and band != self.last_adversarial_band:
+            alert(
+                "Adversarial Field Intensifying",
+                f"Stress field adversary is {band} at {intensity:.0%} intensity",
+                level="critical" if band == "high" else "warning",
+            )
+        self.last_adversarial_band = band
+
+    def check_deployment_gate(self):
+        payload = read_json(DEPLOYMENT_GATE)
+        if not isinstance(payload, dict):
+            return
+
+        mode = str(payload.get("allowed_mode", ""))
+        if mode and mode != self.last_deployment_mode:
+            level = "critical" if mode == "blocked" else "warning" if mode == "shadow_live" else "info"
+            reasons = payload.get("reasons") if isinstance(payload.get("reasons"), list) else []
+            reason_suffix = f" ({reasons[0]})" if reasons else ""
+            alert(
+                "Deployment Gate Shift",
+                f"Operational capital gate moved to {mode}{reason_suffix}",
+                level=level,
+            )
+        self.last_deployment_mode = mode
+
+    def check_execution_drift(self):
+        payload = read_json(EXECUTION_DRIFT)
+        if not isinstance(payload, dict):
+            return
+
+        ready = bool(payload.get("reliable_for_capital"))
+        if self.last_execution_ready is None:
+            self.last_execution_ready = ready
+            return
+        if ready != self.last_execution_ready:
+            alert(
+                "Execution Drift Shift",
+                (
+                    "Paper execution is now capital-ready"
+                    if ready
+                    else f"Paper execution drift is no longer capital-ready ({str(payload.get('execution_fidelity_level', 'unknown'))})"
+                ),
+                level="info" if ready else "warning",
+            )
+        self.last_execution_ready = ready
+
+    def check_capital_firewall(self):
+        payload = read_json(CAPITAL_FIREWALL)
+        if not isinstance(payload, dict):
+            return
+
+        decision = str(payload.get("decision", ""))
+        if decision and decision != self.last_firewall_decision:
+            level = "critical" if decision == "no_trade" else "warning" if decision == "allow_reduced_size" else "info"
+            reasons = payload.get("reasons") if isinstance(payload.get("reasons"), list) else []
+            caps = (
+                f" exposure={float(payload.get('max_total_exposure_pct', 0.0)):.2%}"
+                f" per-trade={float(payload.get('max_per_trade_pct', 0.0)):.2%}"
+            )
+            alert(
+                "Capital Firewall Shift",
+                f"Capital firewall moved to {decision}.{caps}" + (f" ({reasons[0]})" if reasons else ""),
+                level=level,
+            )
+        self.last_firewall_decision = decision
+
     def tick(self):
         """Run one check cycle."""
         state = read_json(STATE) or {}
@@ -325,6 +455,10 @@ class AlertMonitor:
         self.check_divergence(div_data)
         self.check_safety(state, journal)
         self.check_health()
+        self.check_streaming_stress()
+        self.check_deployment_gate()
+        self.check_execution_drift()
+        self.check_capital_firewall()
 
     def run(self):
         """Main loop."""

@@ -1,0 +1,23 @@
+{
+  "label": "candidate_A",
+  "cache_used": true,
+  "cache_path": "data/cache/enriched/proceed_gate_slots_180d_0851375e.pkl",
+  "portfolio_return": 0.13397864817563265,
+  "portfolio_sharpe": 2.163582009515771,
+  "portfolio_pf": 1.9537885114455666,
+  "portfolio_max_drawdown": 0.04536620176220714,
+  "strategy_pnl": 30.283768843582834,
+  "strategy_pf": 1.2641925957129707,
+  "strategy_trades": 6,
+  "institutional_score": 7.0,
+  "institutional_total_tests": 7,
+  "verdicts": {
+    "strategy_corr_<0.7": true,
+    "asset_corr_<0.8": true,
+    "diversification_ratio_>1": true,
+    "all_strats_profitable_1+_regime": true,
+    "pf>1_at_2%_size": true,
+    "pf>1_at_5%_size": true,
+    "max_viable_>=3%": true
+  }
+}

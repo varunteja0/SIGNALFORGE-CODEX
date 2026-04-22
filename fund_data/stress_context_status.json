@@ -1,0 +1,40 @@
+{
+  "generated_at": "2026-04-22T02:26:37.840347+00:00",
+  "source_generated_at": "2026-04-22T02:26:23.277522+00:00",
+  "paper_mode": true,
+  "probation_mode": false,
+  "pressure_score": 29.64818546293346,
+  "pressure_level": "low",
+  "collapse_probability": 0.3104597503705525,
+  "collapse_horizon_ticks": 6,
+  "should_halt": false,
+  "allow_entries": true,
+  "entry_action": "allow",
+  "policy_stage": "paper_warmup",
+  "tensor": {
+    "liquidity_distortion": 0.07644750575093139,
+    "latency_amplification": 0.026973582748670146,
+    "regime_volatility_curvature": 0.6415149201620102,
+    "execution_friction_density": 0.05721502090084479,
+    "collapse_hazard": 0.39871372012972406
+  },
+  "execution_profile": {
+    "slippage_multiplier": 1.391778383072815,
+    "latency_multiplier": 1.2196833888464027,
+    "book_depth_multiplier": 0.848182411514894,
+    "fill_ratio_multiplier": 0.9148959996146495,
+    "price_gap_multiplier": 0.7147295384001698,
+    "entry_size_multiplier": 0.8846820822540762,
+    "exposure_multiplier": 0.8498550410371575,
+    "preferred_algo": "auto"
+  },
+  "reasons": [
+    "Sequence baseline has only 2 snapshots; require 96 for trajectory continuity.",
+    "Cross-asset correlation is collapsing into a stress cluster.",
+    "Micro-collapse probability 88% exceeds the tolerance band.",
+    "Paper-mode warmup is observing trades while the stress trajectory baseline is still bootstrapping."
+  ],
+  "policy_reasons": [
+    "Continuous pressure kernel predicts a live protection failure under coupled stress."
+  ]
+}

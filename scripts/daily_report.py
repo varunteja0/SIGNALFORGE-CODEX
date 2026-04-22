@@ -70,7 +70,7 @@ def main():
         print(f"\n  ─── SIGNAL REQUIREMENTS ───")
         print(f"  funding_mr_v7:     Funding z-score must reach ±3.0")
         print(f"  extreme_spike:     Funding z-score must reach ±4.0 + high vol regime")
-        print(f"  fund_vol_squeeze:  BB squeeze <10th pctile + funding z ±2.0")
+        print(f"  fund_vol_squeeze:  SOL-only BB squeeze <15th pctile + funding z ±1.5")
         print(f"  momentum_breakout: Donchian breakout (ETH) + ATR expansion + volume")
         print(f"\n  These are HIGH-CONVICTION strategies. They fire rarely = good.")
         print(f"  From backtest: ~131 trades over 365 days = ~2.5 trades/week average.")

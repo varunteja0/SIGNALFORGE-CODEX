@@ -1,0 +1,23 @@
+{
+  "label": "baseline_default",
+  "cache_used": true,
+  "cache_path": "data/cache/enriched/proceed_gate_slots_180d_0851375e.pkl",
+  "portfolio_return": 0.13284417764206338,
+  "portfolio_sharpe": 2.149002873936981,
+  "portfolio_pf": 2.002637578693497,
+  "portfolio_max_drawdown": 0.03994258616392328,
+  "strategy_pnl": 18.939063507889756,
+  "strategy_pf": 1.5430556241716882,
+  "strategy_trades": 3,
+  "institutional_score": 7.0,
+  "institutional_total_tests": 7,
+  "verdicts": {
+    "strategy_corr_<0.7": true,
+    "asset_corr_<0.8": true,
+    "diversification_ratio_>1": true,
+    "all_strats_profitable_1+_regime": true,
+    "pf>1_at_2%_size": true,
+    "pf>1_at_5%_size": true,
+    "max_viable_>=3%": true
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "n_trials": 270,
+  "best_single": {
+    "name": "rel_lb120_sm24_en65_sb10_tv006",
+    "family": "relative",
+    "score": 0.57785856567605,
+    "is_fold_sharpe_mean": 1.1745906502880372,
+    "is_fold_sharpe_min": -0.14244615570194674,
+    "is_sharpe": 1.2383747688114712,
+    "is_max_drawdown": -0.18052774604725563,
+    "mean_turnover": 0.015236543932324246,
+    "max_weight": 0.6213446254814345,
+    "weights": {
+      "BTC/USDT": 0.3354698140097491,
+      "ETH/USDT": 0.04318556050881637,
+      "SOL/USDT": 0.6213446254814345
+    }
+  },
+  "ensemble": {
+    "name": "ens_ivol_2_corr70",
+    "n_members": 2,
+    "members": [
+      {
+        "name": "rel_lb120_sm24_en65_sb10_tv006",
+        "family": "relative",
+        "is_sharpe": 1.2383747688114712,
+        "is_fold_sharpe_mean": 1.1745906502880372,
+        "max_weight": 0.6213446254814345
+      },
+      {
+        "name": "trend_f48_s168_c72_e65_x15_tv006",
+        "family": "trend",
+        "is_sharpe": 0.5389223665747741,
+        "is_fold_sharpe_mean": 0.5392526259255641,
+        "max_weight": 0.5863705589625012
+      }
+    ],
+    "score": 0.23963615621782774,
+    "is_fold_sharpe_mean": 0.7232275586167835,
+    "is_fold_sharpe_min": -0.358254098211695,
+    "is_fold_positive_frac": 0.8,
+    "is_sharpe": 0.7387675413083259,
+    "is_sharpe_cost_1p5x": 0.4787116801966776,
+    "is_sharpe_cost_2x": 0.21888282625956063,
+    "is_max_drawdown": -0.1310771101934941,
+    "is_total_return": 0.2421748441196161,
+    "mean_turnover": 0.02529287654794937,
+    "max_weight": 0.5,
+    "weights": {
+      "BTC/USDT": 0.2659422180817278,
+      "ETH/USDT": 0.23405778191827223,
+      "SOL/USDT": 0.5
+    }
+  },
+  "gate": {
+    "baseline_oos_sharpe": 0.01715,
+    "beats_best_single_is_fold_sharpe": false
+  }
+}
