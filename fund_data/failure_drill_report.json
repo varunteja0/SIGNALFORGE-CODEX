@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-22T02:26:37.832515+00:00",
+  "generated_at": "2026-04-24T18:00:34.058735+00:00",
   "all_passed": true,
   "scenario_count": 7,
   "passed_count": 7,
@@ -43,7 +43,7 @@
       "observed_status": "critical",
       "should_halt": true,
       "details": {
-        "generated_at": "2026-04-22T02:26:37.832331+00:00",
+        "generated_at": "2026-04-24T18:00:34.057682+00:00",
         "overall_status": "critical",
         "critical_issue_count": 1,
         "warning_issue_count": 0,
@@ -72,7 +72,7 @@
       "observed_status": "critical",
       "should_halt": true,
       "details": {
-        "generated_at": "2026-04-22T02:26:37.832401+00:00",
+        "generated_at": "2026-04-24T18:00:34.058405+00:00",
         "overall_status": "critical",
         "critical_issue_count": 1,
         "warning_issue_count": 0,
@@ -104,7 +104,7 @@
       "observed_status": "critical",
       "should_halt": true,
       "details": {
-        "generated_at": "2026-04-22T02:26:37.832430+00:00",
+        "generated_at": "2026-04-24T18:00:34.058437+00:00",
         "overall_status": "critical",
         "critical_issue_count": 1,
         "warning_issue_count": 0,
@@ -137,7 +137,7 @@
       "observed_status": "warning",
       "should_halt": false,
       "details": {
-        "generated_at": "2026-04-22T02:26:37.832479+00:00",
+        "generated_at": "2026-04-24T18:00:34.058696+00:00",
         "overall_status": "warning",
         "critical_issue_count": 0,
         "warning_issue_count": 1,

@@ -18,6 +18,7 @@ Unified Engine (evolve → trade → monitor → adapt):
     python sf.py crowding          # Show crowding analysis
     python sf.py cascade           # Show cascade prediction
     python sf.py engine-status     # Show engine state
+    python sf.py terminal          # Terminal dashboard for live metrics
 
 Legacy:
     python sf.py live              # Paper trading via go_live.py (legacy)
@@ -285,6 +286,22 @@ def cmd_report(args):
     """Generate daily report."""
     import subprocess
     subprocess.run([sys.executable, "scripts/daily_report.py"])
+
+
+def cmd_terminal(args):
+    """Render the live dashboard directly in the terminal."""
+    import subprocess
+
+    cmd = [sys.executable, "scripts/live_terminal_dashboard.py"]
+    if args.base_dir:
+        cmd.extend(["--base-dir", args.base_dir])
+    if args.interval is not None:
+        cmd.extend(["--interval", str(args.interval)])
+    if args.trade_limit is not None:
+        cmd.extend(["--trade-limit", str(args.trade_limit)])
+    if args.once:
+        cmd.append("--once")
+    subprocess.run(cmd)
 
 
 # ==================================================================
@@ -566,6 +583,14 @@ def main():
     # report
     p_rep = sub.add_parser("report", help="Generate daily report")
     p_rep.set_defaults(func=cmd_report)
+
+    # terminal dashboard
+    p_term = sub.add_parser("terminal", help="Show live dashboard metrics directly in the terminal")
+    p_term.add_argument("--base-dir", default="fund_data", help="Directory containing live dashboard artifacts")
+    p_term.add_argument("--interval", type=float, default=15.0, help="Refresh interval in seconds")
+    p_term.add_argument("--trade-limit", type=int, default=5, help="How many recent closed trades to show")
+    p_term.add_argument("--once", action="store_true", help="Render one snapshot and exit")
+    p_term.set_defaults(func=cmd_terminal)
 
     # ---- NEW: Unified Engine Commands ----
     engine_common = argparse.ArgumentParser(add_help=False)

@@ -17,6 +17,7 @@ Notifications:
 Run: python scripts/alerts.py
 """
 
+import argparse
 import os
 import sys
 import json
@@ -147,7 +148,9 @@ def read_json(path: Path) -> Optional[any]:
 # ── Monitor State ────────────────────────────────────────────────
 
 class AlertMonitor:
-    def __init__(self):
+    def __init__(self, *, poll_interval: int = POLL_INTERVAL, notify_startup: bool = False):
+        self.poll_interval = poll_interval
+        self.notify_startup = notify_startup
         self.last_trade_count = 0
         self.last_open_count = 0
         self.dd_alerted = set()    # DD levels already alerted
@@ -161,6 +164,66 @@ class AlertMonitor:
         self.last_deployment_mode = ""
         self.last_execution_ready: bool | None = None
         self.last_firewall_decision = ""
+
+    def prime_state(self):
+        """Baseline current artifacts so only future changes trigger alerts."""
+        state = read_json(STATE) or {}
+        journal = read_json(JOURNAL) or []
+        self.last_trade_count = len(journal)
+        self.last_open_count = len(state.get("open_positions", [])) if isinstance(state, dict) else 0
+
+        initial = float(state.get("initial_capital", 0.0) or 0.0) if isinstance(state, dict) else 0.0
+        capital = float(state.get("capital", 0.0) or 0.0) if isinstance(state, dict) else 0.0
+        if initial > 0.0:
+            dd = max((initial - capital) / initial, 0.0)
+            self.dd_alerted = {level for level in DD_WARN_LEVELS if dd >= level}
+
+        div_data = read_json(DIVERGENCE)
+        if isinstance(div_data, dict):
+            div_data = div_data.get("comparisons", [])
+        if isinstance(div_data, list):
+            self.div_alerted = {
+                f"{entry.get('strategy', '')}_{entry.get('timestamp', '')}"
+                for entry in div_data
+                if isinstance(entry, dict)
+            }
+
+        if STATE.exists():
+            age_min = (time.time() - STATE.stat().st_mtime) / 60.0
+            self.stale_alerted = age_min > STALE_MINUTES
+
+        payload = read_json(STRESS_KERNEL)
+        if isinstance(payload, dict):
+            self.last_pressure_level = str(payload.get("pressure_level", ""))
+            policy = payload.get("probation_live_policy") if isinstance(payload.get("probation_live_policy"), dict) else {}
+            self.last_probation_stage = str(policy.get("stage", ""))
+
+        payload = read_json(STRESS_CONTEXT)
+        if isinstance(payload, dict):
+            self.last_collapse_horizon = int(payload.get("collapse_horizon_ticks", 0) or 0)
+
+        payload = read_json(STRESS_FIELD)
+        if isinstance(payload, dict):
+            adversarial = payload.get("adversarial_input") if isinstance(payload.get("adversarial_input"), dict) else {}
+            intensity = float(adversarial.get("intensity", 0.0) or 0.0)
+            if intensity >= 0.70:
+                self.last_adversarial_band = "high"
+            elif intensity >= 0.45:
+                self.last_adversarial_band = "moderate"
+            else:
+                self.last_adversarial_band = "low"
+
+        payload = read_json(DEPLOYMENT_GATE)
+        if isinstance(payload, dict):
+            self.last_deployment_mode = str(payload.get("allowed_mode", ""))
+
+        payload = read_json(EXECUTION_DRIFT)
+        if isinstance(payload, dict):
+            self.last_execution_ready = bool(payload.get("reliable_for_capital"))
+
+        payload = read_json(CAPITAL_FIREWALL)
+        if isinstance(payload, dict):
+            self.last_firewall_decision = str(payload.get("decision", ""))
 
     def check_trades(self, journal: list, state: dict):
         """Alert on new trade entries and exits."""
@@ -462,29 +525,43 @@ class AlertMonitor:
 
     def run(self):
         """Main loop."""
-        alert(
-            "Alert Monitor Started",
-            f"Watching every {POLL_INTERVAL}s | DD warns: {[f'{l:.0%}' for l in DD_WARN_LEVELS]}",
-            level="info",
+        self.prime_state()
+        startup_msg = (
+            f"Watching every {self.poll_interval}s | DD warns: {[f'{l:.0%}' for l in DD_WARN_LEVELS]}"
         )
-
-        # Sync with current state
-        journal = read_json(JOURNAL) or []
-        state = read_json(STATE) or {}
-        self.last_trade_count = len(journal)
-        self.last_open_count = len(state.get("open_positions", []))
+        if self.notify_startup:
+            alert("Alert Monitor Started", startup_msg, level="info")
+        else:
+            log.info("Alert monitor primed silently. %s", startup_msg)
 
         while True:
             try:
                 self.tick()
             except Exception as e:
                 log.error(f"Monitor error: {e}", exc_info=True)
-            time.sleep(POLL_INTERVAL)
+            time.sleep(self.poll_interval)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Silent artifact watcher for paper-trading events.")
+    parser.add_argument(
+        "--poll-interval",
+        type=int,
+        default=POLL_INTERVAL,
+        help="Seconds between checks",
+    )
+    parser.add_argument(
+        "--notify-startup",
+        action="store_true",
+        help="Send a startup notification instead of silently baselining the current state",
+    )
+    return parser.parse_args()
 
 
 # ── Entry Point ──────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    args = parse_args()
     print("""
 ╔══════════════════════════════════════════════════════════════╗
 ║           SIGNALFORGE — ALERT MONITOR                      ║
@@ -499,12 +576,15 @@ if __name__ == "__main__":
 ║  Notifications: macOS native""" +
           (" + Telegram" if TG_TOKEN else "") + """
 ║                                                              ║
-║  Poll interval: """ + f"{POLL_INTERVAL}s" + """                                        ║
+║  Poll interval: """ + f"{args.poll_interval}s" + """                                        ║
 ║  Ctrl+C to stop.                                             ║
 ╚══════════════════════════════════════════════════════════════╝
 """)
 
-    monitor = AlertMonitor()
+    monitor = AlertMonitor(
+        poll_interval=max(int(args.poll_interval), 5),
+        notify_startup=bool(args.notify_startup),
+    )
     try:
         monitor.run()
     except KeyboardInterrupt:

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-22T02:27:24.433723+00:00",
+  "generated_at": "2026-04-24T18:01:56.213932+00:00",
   "operating_mode": "paper",
   "enforced": false,
   "deployment_allowed_mode": "shadow_live",
@@ -9,10 +9,10 @@
   "base_max_per_trade_pct": 0.02,
   "max_total_exposure_pct": 0.0,
   "max_per_trade_pct": 0.0,
-  "stress_hysteresis": 0.31090959451294975,
-  "stress_adversarial_intensity": 0.5084073743288243,
-  "collapse_probability": 0.3104597503705525,
-  "collapse_horizon_ticks": 6,
+  "stress_hysteresis": 0.14025175058991654,
+  "stress_adversarial_intensity": 0.6160358430198064,
+  "collapse_probability": 0.6392353227394043,
+  "collapse_horizon_ticks": 4,
   "execution_fidelity_score": 42.0,
   "execution_fidelity_level": "unstable",
   "execution_miss_rate": 0.0,
@@ -20,14 +20,15 @@
   "avg_fill_ratio": 1.0,
   "avg_book_spread_bps": 0.0,
   "avg_book_impact_bps": 0.0,
-  "market_max_vol_ratio": 0.9034613911368133,
-  "market_max_atr_expansion": 1.2393526405451478,
-  "market_mean_abs_corr_48h": 0.8632209332968112,
-  "market_corr_shift_48h": 0.11967215432008782,
-  "market_dispersion_24h": 0.0013908760608992929,
+  "market_max_vol_ratio": 0.05624678238167055,
+  "market_max_atr_expansion": 1.2684288198249611,
+  "market_mean_abs_corr_48h": 0.7349815952668837,
+  "market_corr_shift_48h": 0.03723426057647983,
+  "market_dispersion_24h": 0.0015393375929162246,
   "reasons": [
     "Execution fidelity has degraded below the live-capital floor.",
     "Adversarial field intensity remains elevated.",
+    "Collapse proximity remains inside the reduced-size band.",
     "Execution fidelity is below the full-size threshold."
   ]
 }

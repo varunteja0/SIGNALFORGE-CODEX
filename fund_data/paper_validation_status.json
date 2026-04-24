@@ -1,0 +1,25 @@
+{
+  "ready_for_live": false,
+  "generated_at": "2026-04-24T18:01:48.208778Z",
+  "run_days": 2.648810935462963,
+  "cycle_count": 62,
+  "trade_count": 0,
+  "max_drawdown": 0.0,
+  "mean_tracking_error": 0.14849261737643035,
+  "mean_edge_retention": 0.8889580733428859,
+  "fragile_edge_fraction": 0.0,
+  "mean_objective_score": -0.16258679926338637,
+  "pid_flip_rate": 0.0,
+  "avg_entry_slippage_bps": 0.0,
+  "miss_rate": 0.0,
+  "avg_pnl_divergence_pct": 0.0,
+  "latest_safety_action": "allow",
+  "latest_timestamp": "2026-04-24T18:01:32.192589+00:00",
+  "reasons": [
+    "runtime 2.6d < required 14.0d",
+    "cycles 62 < required 100",
+    "trades 0 < required 20",
+    "mean vol tracking error 0.148 > 0.080",
+    "mean objective score -0.163 < -0.050"
+  ]
+}

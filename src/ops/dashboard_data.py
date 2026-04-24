@@ -17,8 +17,8 @@ from typing import Any
 from src.ops.deployment_gate import DeploymentGateThresholds
 from src.ops.shadow_live_comparator import ShadowLiveComparatorThresholds
 
-# Default state paths. Callers may override by passing a ``base_dir``.
-_DEFAULT_BASE = Path("fund_data")
+# Resolve dashboard artifacts from the repository root, not the caller cwd.
+_DEFAULT_BASE = Path(__file__).resolve().parents[2] / "fund_data"
 
 DEFAULT_ASSETS: list[str] = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT"]
 

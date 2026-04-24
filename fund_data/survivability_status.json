@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-22T02:26:37.836666+00:00",
-  "history_points": 2,
+  "generated_at": "2026-04-24T18:00:34.078971+00:00",
+  "history_points": 64,
   "regime_novelty_score": 100.0,
   "regime_novelty_level": "insufficient_history",
   "regime_shift_detected": true,
@@ -30,7 +30,7 @@
   },
   "scenarios": [],
   "reasons": [
-    "Regime novelty baseline has only 2 snapshots; require 72 before capital exposure.",
+    "Regime novelty baseline has only 64 snapshots; require 72 before capital exposure.",
     "Execution stress lab has no recent trade evidence to replay.",
     "Survivability score is 0.0/100, below the 65.0 minimum."
   ]

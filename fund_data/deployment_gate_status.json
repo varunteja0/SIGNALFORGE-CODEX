@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-22T02:27:24.432588+00:00",
+  "generated_at": "2026-04-24T18:01:56.212048+00:00",
   "allowed_mode": "shadow_live",
   "allow_shadow_live": true,
   "allow_probation_live": false,
@@ -15,12 +15,12 @@
   "shadow_live_validation_runtime_days": 0.0,
   "certification_current_green": false,
   "certification_ready_for_live": false,
-  "drift_risk_score": 18.85245901639344,
+  "drift_risk_score": 38.71229894565503,
   "survivability_score": 0.0,
   "stress_observation_consistent": true,
   "stress_field_phase": "paper_field",
-  "stress_field_hysteresis": 0.31090959451294975,
-  "stress_field_adversarial_intensity": 0.5084073743288243,
+  "stress_field_hysteresis": 0.14025175058991654,
+  "stress_field_adversarial_intensity": 0.6160358430198064,
   "recommended_max_total_exposure_pct": 0.0,
   "recommended_max_per_trade_pct": 0.0,
   "reasons": [
@@ -33,6 +33,7 @@
     "Need at least 3.0 shadow-live days before probation deployment.",
     "Production certification is not currently green.",
     "Survivability score is too weak for probation deployment.",
+    "Adversarial field intensity remains too high for probation capital.",
     "Streaming stress kernel does not currently allow probation deployment."
   ]
 }

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from src.ops.dashboard_data import (
+    _DEFAULT_BASE,
     DEFAULT_ASSETS,
     build_live_readiness_snapshot,
     compute_signal_proximity,
@@ -32,6 +33,11 @@ from src.ops.dashboard_data import (
 # --------------------------------------------------------------------------
 # Loaders
 # --------------------------------------------------------------------------
+def test_default_base_points_to_repo_fund_data():
+    expected = Path(__file__).resolve().parents[1] / "fund_data"
+    assert _DEFAULT_BASE == expected
+
+
 def test_load_state_missing_returns_empty_dict(tmp_path: Path):
     assert load_state(tmp_path) == {}
 

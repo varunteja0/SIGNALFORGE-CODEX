@@ -22,6 +22,28 @@
       },
       "entry_hash": "672eaad224b7ffd1cadbb40f6ec6dc136590af10ca3aa3133bcd6a2c0964b362",
       "prev_hash": "genesis"
+    },
+    {
+      "sequence": 1,
+      "timestamp": 1776832640.8498409,
+      "entry_type": "risk_event",
+      "asset": "PORTFOLIO",
+      "direction": 0,
+      "price": 10000.0,
+      "size": 0.0,
+      "strategy_name": "production_guard",
+      "strategy_hash": "a2ab990ce56c09ef12ec126ed34d4e9ccf21ae8199783c515f73cedf7df45225",
+      "signal_strength": 0.0,
+      "risk_approval": false,
+      "risk_details": "4 consecutive errors \u2014 halt recommended",
+      "pnl": 0.0,
+      "metadata": {
+        "drawdown": 0.0,
+        "daily_pnl": 0,
+        "size_unit": "usd"
+      },
+      "entry_hash": "0650251422a5566c85960849a72aa4793fc71c68aa4aed2df905170d91e373d9",
+      "prev_hash": "672eaad224b7ffd1cadbb40f6ec6dc136590af10ca3aa3133bcd6a2c0964b362"
     }
   ]
 }
