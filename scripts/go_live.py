@@ -1118,6 +1118,23 @@ class LiveTrader:
 
         logger.info("Kelly sizer pre-seeded with backtest stats")
 
+    def _refresh_runtime_artifacts(
+        self,
+        datasets: dict[str, pd.DataFrame] | None = None,
+        *,
+        refresh_inputs: bool,
+    ) -> None:
+        payload = datasets or {}
+        if self.paper_mode:
+            self._update_paper_validation_status()
+        self._save_market_snapshot(
+            payload,
+            append_history=False,
+            snapshot_ts=self._current_tick_snapshot_ts,
+        )
+        self._refresh_production_certification(refresh_inputs=refresh_inputs)
+        self._save_state()
+
     # ─── Core Loop ───────────────────────────────────────────────
 
     def run(self, once: bool = False):
@@ -1162,10 +1179,8 @@ class LiveTrader:
         daily_pnl = sum(t.pnl for t in today_trades)
         current_drawdown = (self.initial_capital - self.capital) / self.initial_capital if self.initial_capital > 0 else 0.0
         if self._check_operational_health(current_drawdown=current_drawdown, daily_pnl=daily_pnl):
-            self._refresh_production_certification()
             self._print_status({})
-            self._save_market_snapshot({})
-            self._save_state()
+            self._refresh_runtime_artifacts({}, refresh_inputs=True)
             return
 
         # ── Safety Rails ──
@@ -1183,8 +1198,10 @@ class LiveTrader:
                 decision_to_protection_ms=0.0,
                 metadata={"drawdown": dd},
             )
-            self._manage_positions(self._fetch_latest())
-            self._refresh_production_certification()
+            datasets = self._fetch_latest()
+            self._manage_positions(datasets)
+            self._print_status(datasets)
+            self._refresh_runtime_artifacts(datasets, refresh_inputs=True)
             return
 
         # 2. Daily loss limit check
@@ -1200,10 +1217,10 @@ class LiveTrader:
                 decision_to_protection_ms=0.0,
                 metadata={"daily_pnl": daily_pnl, "daily_limit": daily_loss_limit},
             )
-            self._manage_positions(self._fetch_latest())
-            self._print_status({})
-            self._refresh_production_certification()
-            self._save_state()
+            datasets = self._fetch_latest()
+            self._manage_positions(datasets)
+            self._print_status(datasets)
+            self._refresh_runtime_artifacts(datasets, refresh_inputs=True)
             return
 
         # 3. Consecutive loss detection
@@ -1219,17 +1236,17 @@ class LiveTrader:
                 decision_to_protection_ms=0.0,
                 metadata={"loss_count": 8},
             )
-            self._manage_positions(self._fetch_latest())
-            self._print_status({})
-            self._refresh_production_certification()
-            self._save_state()
+            datasets = self._fetch_latest()
+            self._manage_positions(datasets)
+            self._print_status(datasets)
+            self._refresh_runtime_artifacts(datasets, refresh_inputs=True)
             return
 
         # 1. Fetch latest data
         datasets = self._fetch_latest()
         if not datasets:
             logger.warning("No data available — skipping tick")
-            self._refresh_production_certification()
+            self._refresh_runtime_artifacts({}, refresh_inputs=True)
             return
 
         # 1b. Market State Brain — rich latent state detection
@@ -1243,8 +1260,7 @@ class LiveTrader:
         if self._check_operational_health(current_drawdown=current_drawdown, daily_pnl=daily_pnl):
             self._manage_positions(datasets)
             self._print_status(datasets)
-            self._refresh_production_certification(refresh_inputs=False)
-            self._save_state()
+            self._refresh_runtime_artifacts(datasets, refresh_inputs=False)
             return
 
         # 2. Check + manage open positions (exits first)

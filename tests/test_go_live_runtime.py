@@ -5,6 +5,45 @@ from types import SimpleNamespace
 from scripts.go_live import LiveTrader
 
 
+def test_tick_refreshes_paper_validation_when_initial_health_halts() -> None:
+    trader = LiveTrader.__new__(LiveTrader)
+    trader.iteration = 7
+    trader.capital = 10_000.0
+    trader.initial_capital = 10_000.0
+    trader.open_positions = []
+    trader.closed_trades = []
+    trader.paper_mode = True
+    trader.sentiment_refresh_interval = 4
+    trader._current_tick_snapshot_ts = None
+    trader.health_monitor = SimpleNamespace(heartbeat=lambda: None)
+
+    calls: list[object] = []
+
+    trader._reconcile_positions = lambda: None
+    trader._refresh_journal_diagnostics = lambda persist=False: None
+    trader._check_operational_health = lambda current_drawdown, daily_pnl: True
+    trader._print_status = lambda datasets: calls.append(("print_status", datasets))
+    trader._update_paper_validation_status = lambda: calls.append("paper_validation")
+    trader._save_market_snapshot = lambda datasets, append_history=False, snapshot_ts=None: calls.append(
+        ("market_snapshot", datasets, append_history)
+    )
+    trader._refresh_production_certification = lambda refresh_inputs=True: calls.append(
+        ("production_certification", refresh_inputs)
+    )
+    trader._save_state = lambda: calls.append("save_state")
+    trader._fetch_latest = lambda: calls.append("fetch_latest")
+
+    LiveTrader._tick(trader)
+
+    assert calls == [
+        ("print_status", {}),
+        "paper_validation",
+        ("market_snapshot", {}, False),
+        ("production_certification", True),
+        "save_state",
+    ]
+
+
 def test_tick_refreshes_paper_validation_when_adaptive_guard_pauses_entries() -> None:
     trader = LiveTrader.__new__(LiveTrader)
     trader.iteration = 7

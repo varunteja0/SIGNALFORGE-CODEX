@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-04-24T18:00:34.079171+00:00",
-  "history_points": 64,
+  "generated_at": "2026-04-26T02:00:35.716338+00:00",
+  "history_points": 96,
   "trajectory_window": 8,
   "trajectory_novelty_score": 100.0,
-  "trajectory_novelty_level": "insufficient_history",
-  "transition_stress_score": 100.0,
-  "micro_collapse_probability": 0.7930500436853662,
+  "trajectory_novelty_level": "critical",
+  "transition_stress_score": 0.0,
+  "micro_collapse_probability": 0.5958430089001093,
   "execution_friction_score": 0.0,
   "partial_fill_cascade_score": 0.0,
   "latency_jitter_score": 0.0,
@@ -13,17 +13,17 @@
   "latency_p999_ms": 0.0,
   "rejection_cluster_score": 0.0,
   "liquidity_vacuum_score": 0.0,
-  "correlation_collapse_score": 42.49079763344182,
+  "correlation_collapse_score": 72.75785312513965,
   "kill_switch_efficiency": 1.0,
   "kill_switch_event_count": 26,
   "average_detection_to_decision_ms": 1.4215929594893868,
   "average_decision_to_protection_ms": 0.0,
   "false_positive_rate": 0.0,
   "missed_halt_count": 0,
-  "continuous_pressure_score": 50.766980549846,
-  "pressure_level": "moderate",
+  "continuous_pressure_score": 32.411217185238314,
+  "pressure_level": "low",
   "predicted_pressure_failure": true,
-  "source_generated_at": "2026-04-24T18:00:25.290243+00:00",
+  "source_generated_at": "2026-04-26T02:00:29.988012+00:00",
   "probation_live_policy": {
     "stage": "blocked",
     "entry_action": "halt",
@@ -41,7 +41,8 @@
     ]
   },
   "reasons": [
-    "Sequence baseline has only 64 snapshots; require 96 for trajectory continuity.",
-    "Micro-collapse probability 79% exceeds the tolerance band."
+    "State trajectory novelty 100.0/100 exceeds the continuity threshold.",
+    "Cross-asset correlation is collapsing into a stress cluster.",
+    "Micro-collapse probability 60% exceeds the tolerance band."
   ]
 }
